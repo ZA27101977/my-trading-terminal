@@ -9,7 +9,8 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- TradingView Lightweight Charts - The industry standard for candles -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&family=Assistant:wght@300;400;700&display=swap');
         
@@ -55,15 +56,17 @@
         }
         .card:hover { border-color: rgba(59, 130, 246, 0.3); }
 
-        .chart-wrapper { position: relative; flex: 1; min-height: 0; width: 100%; }
+        .chart-container { 
+            position: relative; 
+            flex: 1; 
+            min-height: 0; 
+            width: 100%; 
+            background: #0c111d;
+        }
 
         /* Custom Scrollbar */
         .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
-
-        /* AI Indicator Glow */
-        .glow-blue { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
-        .glow-green { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
 
         /* Sidebar Item */
         .sidebar-item {
@@ -75,6 +78,8 @@
             background: rgba(59, 130, 246, 0.1);
             border-left-color: var(--accent);
         }
+
+        .glow-blue { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
     </style>
 </head>
 <body>
@@ -87,85 +92,120 @@
             const [activeTicker, setActiveTicker] = useState('NVDA');
             const [tickerData, setTickerData] = useState({ price: 142.50, change: 2.45, pct: "+1.75%", vol: "142.5M", high: 144.20, low: 140.10 });
             const [isLoading, setIsLoading] = useState(false);
+            
+            const chartContainerRef = useRef(null);
             const chartRef = useRef(null);
-            const chartInstance = useRef(null);
+            const candleSeriesRef = useRef(null);
 
-            // Mocked AI signals for better visuals
+            // Mocked AI insights
             const aiInsights = useMemo(() => [
-                { type: 'BUY', text: 'מזהה דפוס פריצה טכני בגרף השעתי', category: 'טכני' },
-                { type: 'NEUTRAL', text: 'סנטימנט חיובי ברשתות החברתיות', category: 'סושיאל' },
-                { type: 'SELL', text: 'התנגדות חזקה בשיא כל הזמנים הקודם', category: 'טכני' }
+                { type: 'BUY', text: 'מזהה דפוס פריצה טכני בנרות היפניים', category: 'טכני' },
+                { type: 'NEUTRAL', text: 'סנטימנט חיובי חזק בקרב המוסדיים', category: 'סושיאל' },
+                { type: 'SELL', text: 'התנגדות משמעותית בקו המגמה העליון', category: 'ניתוח' }
             ], []);
 
             const newsItems = [
                 { title: "הפד צפוי להשאיר את הריבית ללא שינוי", time: "12 דק'", tag: "מאקרו" },
                 { title: `אנליסטים ב-Goldman Sachs מעלים המלצה ל-${activeTicker}`, time: "45 דק'", tag: "אנליסטים" },
                 { title: "סקטור השבבים מושך את הנאסד\"ק לעליות", time: "שעתיים", tag: "שוק" },
-                { title: "דוחות כספיים: צפי לצמיחה של 12% ברבעון הקרוב", time: "3 שעות", tag: "דוחות" }
+                { title: "דוחות כספיים: צפי לצמיחה משמעותית ברבעון", time: "3 שעות", tag: "דוחות" }
             ];
 
-            // Simulate Data Update
+            // Initialize Chart
             useEffect(() => {
-                setIsLoading(true);
-                const timer = setTimeout(() => {
-                    setTickerData({
-                        price: (100 + Math.random() * 200).toFixed(2),
-                        change: (Math.random() * 5 - 2).toFixed(2),
-                        pct: `${(Math.random() * 3).toFixed(2)}%`,
-                        vol: `${(Math.random() * 100).toFixed(1)}M`,
-                        high: "155.20",
-                        low: "138.40"
-                    });
-                    renderChart();
-                    setIsLoading(false);
-                }, 800);
-                return () => clearTimeout(timer);
-            }, [activeTicker]);
+                if (!chartContainerRef.current) return;
 
-            const renderChart = () => {
-                if (!chartRef.current) return;
-                if (chartInstance.current) chartInstance.current.destroy();
-
-                const ctx = chartRef.current.getContext('2d');
-                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
-                gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
-
-                const dummyLabels = Array.from({length: 30}, (_, i) => `${i+1} Feb`);
-                const dummyPrices = Array.from({length: 30}, () => 100 + Math.random() * 50);
-
-                chartInstance.current = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: dummyLabels,
-                        datasets: [{
-                            label: activeTicker,
-                            data: dummyPrices,
-                            borderColor: '#3b82f6',
-                            borderWidth: 3,
-                            fill: true,
-                            backgroundColor: gradient,
-                            tension: 0.4,
-                            pointRadius: 0,
-                            pointHoverRadius: 6,
-                            pointHoverBackgroundColor: '#fff'
-                        }]
+                const chart = LightweightCharts.createChart(chartContainerRef.current, {
+                    layout: {
+                        background: { color: '#0c111d' },
+                        textColor: '#64748b',
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { display: false },
-                            y: { 
-                                position: 'right',
-                                grid: { color: 'rgba(255,255,255,0.03)' },
-                                ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }
-                            }
-                        }
-                    }
+                    grid: {
+                        vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                        horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                    },
+                    crosshair: {
+                        mode: LightweightCharts.CrosshairMode.Normal,
+                    },
+                    rightPriceScale: {
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                    },
+                    timeScale: {
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        timeVisible: true,
+                        secondsVisible: false,
+                    },
+                    handleScroll: true,
+                    handleScale: true,
                 });
-            };
+
+                const candleSeries = chart.addCandlestickSeries({
+                    upColor: '#10b981',
+                    downColor: '#f43f5e',
+                    borderVisible: false,
+                    wickUpColor: '#10b981',
+                    wickDownColor: '#f43f5e',
+                });
+
+                chartRef.current = chart;
+                candleSeriesRef.current = candleSeries;
+
+                const handleResize = () => {
+                    chart.applyOptions({ 
+                        width: chartContainerRef.current.clientWidth,
+                        height: chartContainerRef.current.clientHeight 
+                    });
+                };
+
+                window.addEventListener('resize', handleResize);
+                handleResize();
+
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    chart.remove();
+                };
+            }, []);
+
+            // Update Chart Data
+            useEffect(() => {
+                if (!candleSeriesRef.current) return;
+                
+                setIsLoading(true);
+                
+                // Generate 100 mock candles for demo
+                const data = [];
+                let currentPrice = 100 + Math.random() * 50;
+                const now = new Date();
+                
+                for (let i = 0; i < 100; i++) {
+                    const time = new Date(now.getTime() - (100 - i) * 24 * 60 * 60 * 1000);
+                    const open = currentPrice;
+                    const high = open + Math.random() * 5;
+                    const low = open - Math.random() * 5;
+                    const close = low + Math.random() * (high - low);
+                    
+                    data.push({
+                        time: time.toISOString().split('T')[0],
+                        open, high, low, close
+                    });
+                    currentPrice = close;
+                }
+
+                candleSeriesRef.current.setData(data);
+                
+                // Update ticker summary
+                const last = data[data.length - 1];
+                setTickerData({
+                    price: last.close.toFixed(2),
+                    change: (last.close - last.open).toFixed(2),
+                    pct: `${((last.close - last.open) / last.open * 100).toFixed(2)}%`,
+                    vol: `${(Math.random() * 100).toFixed(1)}M`,
+                    high: last.high.toFixed(2),
+                    low: last.low.toFixed(2)
+                });
+
+                setIsLoading(false);
+            }, [activeTicker]);
 
             return (
                 <div className="dashboard-grid">
@@ -183,32 +223,31 @@
                                 <span className="hover:text-white transition-colors cursor-pointer">AI Signals</span>
                             </nav>
                         </div>
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-6 text-[11px]">
                             <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg glow-green animate-pulse"></div>
-                                <span className="hebrew text-[11px] font-bold text-emerald-500">מחובר בזמן אמת</span>
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span className="hebrew font-bold text-emerald-500">מסחר פעיל</span>
                             </div>
                             <div className="h-4 w-[1px] bg-white/10"></div>
-                            <div className="mono text-[11px] text-slate-400">MARKET OPEN</div>
+                            <div className="mono text-slate-400">15:04:12 GMT+2</div>
                         </div>
                     </header>
 
                     {/* Sidebar */}
                     <aside className="card p-2 gap-2">
                         <div className="p-2">
-                            <input className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-xs mono outline-none focus:border-blue-500 transition-all" placeholder="SEARCH TICKER..." />
+                            <input className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-xs mono outline-none focus:border-blue-500" placeholder="SEARCH TICKER..." />
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scroll px-1">
-                            <h3 className="hebrew text-[10px] text-slate-500 font-bold mb-3 px-2">רשימת מעקב</h3>
+                            <h3 className="hebrew text-[10px] text-slate-500 font-bold mb-3 px-2">נכסים פופולריים</h3>
                             {['NVDA', 'AAPL', 'TSLA', 'BTC', 'ETH', 'MSFT', 'AMD', 'SPY'].map(t => (
                                 <div key={t} onClick={() => setActiveTicker(t)} className={`sidebar-item flex justify-between items-center p-3 rounded-lg mb-1 ${activeTicker === t ? 'active' : 'hover:bg-white/5 text-slate-400'}`}>
                                     <div>
                                         <div className="font-bold mono text-sm">{t}</div>
-                                        <div className="text-[9px] opacity-50 uppercase">Nasdaq 100</div>
+                                        <div className="text-[9px] opacity-40 uppercase">Equity / Stock</div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="text-xs mono font-bold text-emerald-400">+{(Math.random()*3).toFixed(2)}%</div>
-                                        <div className="text-[10px] mono opacity-40">Live</div>
+                                        <div className="text-xs mono font-bold text-emerald-400">+{(Math.random()*2).toFixed(2)}%</div>
                                     </div>
                                 </div>
                             ))}
@@ -226,121 +265,90 @@
                                 </div>
                                 <div className="h-14 w-[1px] bg-white/10"></div>
                                 <div>
-                                    <span className="hebrew text-[10px] text-slate-500 font-bold mb-1 block">מחיר שוק</span>
+                                    <span className="hebrew text-[10px] text-slate-500 font-bold mb-1 block">מחיר אחרון</span>
                                     <div className="flex items-baseline gap-3">
                                         <span className="text-5xl font-bold mono">${tickerData.price}</span>
-                                        <span className={`text-xl font-bold mono ${tickerData.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            {tickerData.change >= 0 ? '▲' : '▼'} {tickerData.pct}
+                                        <span className={`text-xl font-bold mono ${parseFloat(tickerData.change) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {tickerData.pct}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <div className="flex gap-8 pb-1">
                                 <div className="text-right">
-                                    <span className="hebrew text-[9px] text-slate-500 font-bold block uppercase">גבוה יומי</span>
+                                    <span className="hebrew text-[9px] text-slate-500 font-bold block">גבוה</span>
                                     <span className="mono text-sm">${tickerData.high}</span>
                                 </div>
                                 <div className="text-right">
-                                    <span className="hebrew text-[9px] text-slate-500 font-bold block uppercase">נמוך יומי</span>
+                                    <span className="hebrew text-[9px] text-slate-500 font-bold block">נמוך</span>
                                     <span className="mono text-sm">${tickerData.low}</span>
-                                </div>
-                                <div className="text-right">
-                                    <span className="hebrew text-[9px] text-slate-500 font-bold block uppercase">מחזור</span>
-                                    <span className="mono text-sm text-blue-400">{tickerData.vol}</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Chart Card */}
-                        <div className="card flex-1 p-6 flex flex-col relative min-h-0">
-                            <div className="flex justify-between items-center mb-6 z-10">
-                                <div className="flex p-1 bg-black/40 rounded-lg border border-white/5">
-                                    {['1H', '1D', '1W', '1M', '1Y'].map(t => (
-                                        <button key={t} className={`px-4 py-1 text-[10px] font-bold rounded-md transition-all ${t === '1D' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{t}</button>
+                        {/* CANDLESTICK CHART */}
+                        <div className="card flex-1 p-0 relative min-h-0">
+                            <div className="absolute top-4 left-6 z-10 flex items-center gap-4 bg-[#0c111d]/80 backdrop-blur p-2 rounded-lg border border-white/5">
+                                <div className="hebrew text-[11px] font-bold text-blue-400 border-r border-white/10 pr-3">גרף נרות חי</div>
+                                <div className="flex gap-2">
+                                    {['1D', '1W', '1M', '1Y'].map(tf => (
+                                        <button key={tf} className="text-[9px] font-bold px-2 py-1 hover:bg-white/5 rounded text-slate-500">{tf}</button>
                                     ))}
                                 </div>
-                                <div className="flex items-center gap-4">
-                                    <div className="hebrew px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded text-[10px] font-bold">
-                                        המלצת AI: קנייה חזקה
-                                    </div>
-                                    <div className="flex gap-1">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-700"></div>
-                                    </div>
-                                </div>
                             </div>
-                            <div className="chart-wrapper">
-                                {isLoading && <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-20 flex items-center justify-center font-bold text-blue-500 uppercase tracking-widest">Updating Market Data...</div>}
-                                <canvas ref={chartRef}></canvas>
+                            <div className="absolute top-4 right-6 z-10 text-[9px] font-bold text-slate-500 mono flex gap-4">
+                                <span>SCROLL TO ZOOM</span>
+                                <span>DRAG TO PAN</span>
                             </div>
+                            <div ref={chartContainerRef} className="chart-container"></div>
                         </div>
                     </main>
 
                     {/* Right: Insights & Trade */}
                     <aside className="flex flex-col gap-3">
-                        {/* Execution Card */}
+                        {/* Execution */}
                         <div className="card p-6 bg-gradient-to-b from-slate-900/50 to-transparent">
-                            <h3 className="hebrew text-[11px] font-bold text-slate-400 mb-5 uppercase tracking-widest">ביצוע הוראה</h3>
+                            <h3 className="hebrew text-[11px] font-bold text-slate-500 mb-5 uppercase tracking-widest">ביצוע הוראת מסחר</h3>
                             <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-2 p-1 bg-black/20 rounded-xl border border-white/5">
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-black/20 rounded-xl">
                                     <button className="py-3 text-[10px] font-bold uppercase bg-emerald-600 text-white rounded-lg shadow-lg">Buy</button>
-                                    <button className="py-3 text-[10px] font-bold uppercase text-slate-500 hover:text-white">Sell</button>
+                                    <button className="py-3 text-[10px] font-bold uppercase text-slate-500">Sell</button>
                                 </div>
                                 <div className="space-y-1">
-                                    <div className="flex justify-between">
-                                        <label className="hebrew text-[10px] text-slate-500 font-bold uppercase">כמות מניות</label>
-                                        <span className="mono text-[10px] text-blue-500">BP: $24,500</span>
-                                    </div>
-                                    <input type="number" defaultValue="10" className="w-full bg-slate-950 border border-white/10 rounded-xl p-4 text-3xl mono font-bold outline-none focus:border-blue-500 shadow-inner" />
+                                    <label className="hebrew text-[10px] text-slate-500 font-bold uppercase px-1">כמות מניות</label>
+                                    <input type="number" defaultValue="10" className="w-full bg-slate-950 border border-white/10 rounded-xl p-4 text-3xl mono font-bold outline-none focus:border-blue-500" />
                                 </div>
-                                <div className="p-4 bg-blue-500/5 rounded-xl border border-white/5 space-y-2">
-                                    <div className="flex justify-between text-[11px]">
-                                        <span className="hebrew text-slate-500">סה"כ לתשלום:</span>
-                                        <span className="mono text-white font-bold">${(10 * tickerData.price).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-[11px]">
-                                        <span className="hebrew text-slate-500">עמלת מסחר:</span>
-                                        <span className="mono text-emerald-400">$0.00</span>
-                                    </div>
-                                </div>
-                                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-xl text-xs uppercase tracking-widest transition-all transform hover:scale-[1.02] shadow-xl shadow-blue-900/20">
-                                    Confirm Execute
+                                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-xl text-xs uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20">
+                                    Execute Order
                                 </button>
                             </div>
                         </div>
 
-                        {/* AI Insights Card */}
+                        {/* AI Insights & News */}
                         <div className="card flex-1 p-5">
                             <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
                                 <h3 className="hebrew text-[11px] font-bold text-slate-400 uppercase tracking-widest">חדשות ותובנות AI</h3>
-                                <div className="w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
                             </div>
                             <div className="flex-1 overflow-y-auto custom-scroll pr-2 space-y-4">
-                                {/* Signals */}
-                                <div className="space-y-2">
-                                    {aiInsights.map((insight, idx) => (
-                                        <div key={idx} className="p-3 bg-white/5 rounded-lg border-l-2 border-blue-500 hover:bg-white/10 transition-colors cursor-default">
-                                            <div className="flex justify-between mb-1">
-                                                <span className="hebrew text-[9px] font-bold text-blue-400 uppercase">{insight.category}</span>
-                                                <span className={`text-[9px] font-bold mono ${insight.type === 'BUY' ? 'text-emerald-400' : insight.type === 'SELL' ? 'text-rose-400' : 'text-slate-400'}`}>{insight.type}</span>
-                                            </div>
-                                            <p className="hebrew text-xs text-slate-200 leading-relaxed">{insight.text}</p>
+                                {aiInsights.map((insight, idx) => (
+                                    <div key={idx} className="p-3 bg-white/5 rounded-lg border-r-2 border-blue-500 text-right">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className={`text-[9px] font-bold mono ${insight.type === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>{insight.type}</span>
+                                            <span className="hebrew text-[9px] font-bold text-slate-500 uppercase">{insight.category}</span>
                                         </div>
-                                    ))}
-                                </div>
+                                        <p className="hebrew text-[12px] text-slate-200 leading-tight">{insight.text}</p>
+                                    </div>
+                                ))}
                                 <div className="h-[1px] bg-white/5"></div>
-                                {/* News */}
-                                <div className="space-y-4 pt-1">
-                                    {newsItems.map((news, i) => (
-                                        <div key={i} className="group cursor-pointer">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="hebrew text-[8px] px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded uppercase font-bold">{news.tag}</span>
-                                                <span className="hebrew text-[9px] text-slate-600">{news.time}</span>
-                                            </div>
-                                            <p className="hebrew text-[11px] text-slate-400 group-hover:text-blue-400 transition-colors leading-snug font-bold">{news.title}</p>
+                                {newsItems.map((news, i) => (
+                                    <div key={i} className="group cursor-pointer text-right">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="hebrew text-[9px] text-slate-600">{news.time}</span>
+                                            <span className="hebrew text-[8px] px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded uppercase font-bold">{news.tag}</span>
                                         </div>
-                                    ))}
-                                </div>
+                                        <p className="hebrew text-[11px] text-slate-400 group-hover:text-blue-400 transition-colors leading-snug font-bold">{news.title}</p>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </aside>
@@ -349,11 +357,10 @@
                     <footer className="col-span-3 flex items-center justify-between px-4 text-[9px] font-bold text-slate-600 uppercase tracking-widest border-t border-white/5">
                         <div className="flex gap-6">
                             <span>Status: Operational</span>
-                            <span>Region: Israel-Central</span>
-                            <span className="text-blue-500">API: Connected (v2.1)</span>
+                            <span className="text-blue-500">Candlestick Logic: Active</span>
                         </div>
-                        <div className="hebrew text-slate-700 opacity-60">
-                            מערכת מסחר קוואנטה • כל הזכויות שמורות 2024
+                        <div className="hebrew opacity-60">
+                            מערכת קוואנטה • גרסת טרמינל 3.0
                         </div>
                     </footer>
                 </div>
