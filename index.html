@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUANTA.AI | Real-Time AI Terminal</title>
+    <title>QUANTA.AI | Multi-Timeframe Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -64,6 +64,19 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .timeframe-btn {
+            padding: 4px 10px;
+            font-size: 10px;
+            font-weight: 800;
+            border-radius: 4px;
+            transition: all 0.2s;
+            color: #64748b;
+        }
+        .timeframe-btn.active {
+            background: var(--accent-blue);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -73,10 +86,19 @@
         const { useState, useEffect, useRef, useCallback } = React;
 
         const API_KEY_STOCK = "GNYJ6HBVJV6Z8TVS"; 
-        const API_KEY_GEMINI = ""; // המערכת תזריק מפתח אוטומטית
+        const API_KEY_GEMINI = ""; 
+
+        const TIMEFRAMES = [
+            { id: '1D', label: '1D', func: 'TIME_SERIES_INTRADAY', interval: '5min' },
+            { id: '1W', label: '1W', func: 'TIME_SERIES_DAILY', limit: 7 },
+            { id: '1M', label: '1M', func: 'TIME_SERIES_DAILY', limit: 30 },
+            { id: '1Y', label: '1Y', func: 'TIME_SERIES_WEEKLY', limit: 52 },
+            { id: 'ALL', label: 'ALL', func: 'TIME_SERIES_MONTHLY' }
+        ];
 
         const App = () => {
             const [ticker, setTicker] = useState('SPY');
+            const [timeframe, setTimeframe] = useState(TIMEFRAMES[0]);
             const [priceData, setPriceData] = useState({ price: '0.00', change: '0.00', pct: '0.00' });
             const [aiAnalysis, setAiAnalysis] = useState(null);
             const [loading, setLoading] = useState(false);
@@ -84,48 +106,72 @@
             const chartInstance = useRef(null);
             const seriesRef = useRef(null);
 
-            // רשימת מעקב עם נתוני אמת ראשוניים
-            const [watchlist, setWatchlist] = useState([
+            const [watchlist] = useState([
                 { symbol: 'SPY', name: 'S&P 500' },
                 { symbol: 'QQQ', name: 'Nasdaq 100' },
-                { symbol: 'IWM', name: 'Russell 2000' },
                 { symbol: 'NVDA', name: 'Nvidia' },
                 { symbol: 'AAPL', name: 'Apple' },
                 { symbol: 'TSLA', name: 'Tesla' },
                 { symbol: 'BTCUSD', name: 'Bitcoin' }
             ]);
 
-            const fetchRealTimeData = useCallback(async (symbol) => {
+            const fetchStockHistory = useCallback(async (symbol, tf) => {
                 setLoading(true);
                 try {
-                    // קריאת מחיר אמת
-                    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY_STOCK}`;
+                    let url = `https://www.alphavantage.co/query?function=${tf.func}&symbol=${symbol}&apikey=${API_KEY_STOCK}`;
+                    if (tf.interval) url += `&interval=${tf.interval}`;
+                    
                     const res = await fetch(url);
                     const data = await res.json();
-                    const quote = data["Global Quote"];
+                    
+                    let timeSeriesKey = "";
+                    if (tf.id === '1D') timeSeriesKey = "Time Series (5min)";
+                    else if (tf.id === '1W' || tf.id === '1M') timeSeriesKey = "Time Series (Daily)";
+                    else if (tf.id === '1Y') timeSeriesKey = "Weekly Time Series";
+                    else timeSeriesKey = "Monthly Time Series";
 
-                    if (quote) {
-                        const newPrice = {
-                            price: parseFloat(quote["05. price"]).toFixed(2),
-                            change: parseFloat(quote["09. change"]).toFixed(2),
-                            pct: quote["10. change percent"]
-                        };
-                        setPriceData(newPrice);
-                        updateChart(symbol);
-                        runAIAnalysis(symbol, newPrice);
+                    const seriesData = data[timeSeriesKey];
+                    if (seriesData) {
+                        const formattedData = Object.entries(seriesData).map(([time, values]) => {
+                            // עבור תוך-יומי (1D) Lightweight Charts צריך Unix Timestamp או פורמט מתאים
+                            const isIntraday = time.includes(':');
+                            return {
+                                time: isIntraday ? Math.floor(new Date(time).getTime() / 1000) : time,
+                                open: parseFloat(values["1. open"]),
+                                high: parseFloat(values["2. high"]),
+                                low: parseFloat(values["3. low"]),
+                                close: parseFloat(values["4. close"]),
+                            };
+                        }).reverse();
+
+                        // הגבלת כמות נתונים לפי הטווח אם צריך
+                        const finalData = tf.limit ? formattedData.slice(-tf.limit) : formattedData;
+                        seriesRef.current.setData(finalData);
+                        chartInstance.current.timeScale().fitContent();
+
+                        // עדכון מחיר נוכחי מהנר האחרון
+                        const lastBar = finalData[finalData.length - 1];
+                        const prevBar = finalData[finalData.length - 2];
+                        const change = (lastBar.close - prevBar.close).toFixed(2);
+                        const pct = ((change / prevBar.close) * 100).toFixed(2);
+                        
+                        setPriceData({
+                            price: lastBar.close.toFixed(2),
+                            change: change,
+                            pct: (change >= 0 ? '+' : '') + pct + '%'
+                        });
+
+                        runAIAnalysis(symbol, { price: lastBar.close, pct: pct + '%' });
                     }
                 } catch (e) {
-                    console.error("Price fetch failed", e);
+                    console.error("Failed to fetch history", e);
                 } finally {
                     setLoading(false);
                 }
             }, []);
 
             const runAIAnalysis = async (symbol, currentPrice) => {
-                const prompt = `אתה אנליסט מניות AI. נתח את ${symbol} במחיר $${currentPrice.price} (${currentPrice.pct}).
-                ספק המלצה קצרה בעברית (קנייה/מכירה/המתנה) וציון חוזק מגמה מ-0 עד 100.
-                החזר JSON בלבד: {"rec": "...", "score": 85, "reason": "..."}`;
-
+                const prompt = `אנליסט AI. נתח ${symbol} מחיר ${currentPrice.price} שינוי ${currentPrice.pct}. המלצה קצרה בעברית וציון 0-100. JSON: {"rec": "...", "score": 85, "reason": "..."}`;
                 try {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY_GEMINI}`, {
                         method: 'POST',
@@ -138,37 +184,14 @@
                     const data = await res.json();
                     const analysis = JSON.parse(data.candidates[0].content.parts[0].text);
                     setAiAnalysis(analysis);
-                } catch (e) {
-                    setAiAnalysis({ rec: "ממתין לנתונים", score: 50, reason: "שגיאת תקשורת עם ה-AI" });
-                }
-            };
-
-            const updateChart = async (symbol) => {
-                if (!seriesRef.current) return;
-                // כאן בדרך כלל נמשוך היסטוריה, כרגע מייצרים דאטה ויזואלי מהיר לסימולציה נוחה
-                const data = [];
-                let p = parseFloat(priceData.price) || 400;
-                let time = new Date();
-                time.setDate(time.getDate() - 100);
-                for(let i=0; i<100; i++) {
-                    const open = p + (Math.random() - 0.5) * 5;
-                    const close = open + (Math.random() - 0.5) * 5;
-                    data.push({
-                        time: time.toISOString().split('T')[0],
-                        open, high: Math.max(open, close) + 2, low: Math.min(open, close) - 2, close
-                    });
-                    p = close;
-                    time.setDate(time.getDate() + 1);
-                }
-                seriesRef.current.setData(data);
-                chartInstance.current.timeScale().fitContent();
+                } catch (e) { console.error(e); }
             };
 
             useEffect(() => {
                 const chart = LightweightCharts.createChart(chartContainerRef.current, {
                     layout: { background: { color: '#06090f' }, textColor: '#94a3b8' },
                     grid: { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
-                    timeScale: { borderColor: '#30363d' },
+                    timeScale: { borderColor: '#30363d', timeVisible: true },
                     rightPriceScale: { borderColor: '#30363d' },
                 });
                 const candleSeries = chart.addCandlestickSeries({
@@ -176,64 +199,63 @@
                 });
                 chartInstance.current = chart;
                 seriesRef.current = candleSeries;
-                fetchRealTimeData(ticker);
+                
+                fetchStockHistory(ticker, timeframe);
 
-                return () => chart.remove();
+                const handleResize = () => chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+                window.addEventListener('resize', handleResize);
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    chart.remove();
+                };
             }, []);
 
             useEffect(() => {
-                fetchRealTimeData(ticker);
-            }, [ticker, fetchRealTimeData]);
+                fetchStockHistory(ticker, timeframe);
+            }, [ticker, timeframe, fetchStockHistory]);
 
             return (
                 <div className="main-layout">
-                    {/* Header */}
                     <header className="header-panel bg-[#0d1117]">
                         <div className="flex items-center gap-4">
                             <span className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-                                <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-xs">Q</div>
+                                <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-xs italic">Q</div>
                                 QUANTA.AI
                             </span>
-                            <div className="h-6 w-px bg-white/10 mx-2"></div>
                             <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-full">
                                 <div className="ai-status-pulse"></div>
-                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">AI Engine Active</span>
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase">AI Terminal Live</span>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
-                            <div className="relative">
-                                <input 
-                                    className="bg-[#161b22] border border-white/10 rounded-md px-4 py-1.5 text-xs w-48 focus:outline-none focus:border-blue-500 font-bold"
-                                    placeholder="חפש מניה/ETF..."
-                                    onKeyDown={(e) => e.key === 'Enter' && setTicker(e.target.value.toUpperCase())}
-                                />
-                            </div>
-                            <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs font-bold">U</div>
+                            <input 
+                                className="bg-[#161b22] border border-white/10 rounded-md px-4 py-1.5 text-xs w-48 focus:outline-none focus:border-blue-500 font-bold"
+                                placeholder="Search Symbol (e.g. NVDA)"
+                                onKeyDown={(e) => e.key === 'Enter' && setTicker(e.target.value.toUpperCase())}
+                            />
                         </div>
                     </header>
 
-                    {/* Stats Bar */}
                     <section className="portfolio-summary">
                         <div className="flex flex-col">
-                            <span className="stat-label hebrew">מניה פעילה</span>
+                            <span className="stat-label hebrew">מניה</span>
                             <span className="stat-value text-blue-500 font-black">{ticker}</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="stat-label hebrew">מחיר אמת</span>
+                            <span className="stat-label hebrew">מחיר (${timeframe.id})</span>
                             <span className="stat-value font-mono">${priceData.price}</span>
                         </div>
                         <div className="flex flex-col">
                             <span className="stat-label hebrew">שינוי</span>
-                            <span className={`stat-value font-mono ${priceData.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            <span className={`stat-value font-mono ${parseFloat(priceData.change) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                 {priceData.change} ({priceData.pct})
                             </span>
                         </div>
                         {loading && <div className="loader-ring"></div>}
                     </section>
 
-                    {/* Watchlist */}
                     <aside className="watchlist-panel panel bg-[#0a0d14]">
-                        <h3 className="hebrew font-bold text-xs text-slate-500 mb-4 px-2 uppercase tracking-widest">רשימת מעקב אמת</h3>
+                        <h3 className="hebrew font-bold text-xs text-slate-500 mb-4 px-2 uppercase tracking-widest">רשימת מעקב</h3>
                         <div className="flex-1 overflow-y-auto">
                             {watchlist.map(item => (
                                 <div 
@@ -245,24 +267,36 @@
                                         <span className="font-bold text-sm">{item.symbol}</span>
                                         <span className="text-[9px] text-slate-500 uppercase">{item.name}</span>
                                     </div>
-                                    <span className="text-right font-mono text-xs self-center">$---</span>
                                     <span className="text-right text-[10px] self-center text-slate-600">LIVE</span>
                                 </div>
                             ))}
                         </div>
                     </aside>
 
-                    {/* Chart & AI Analysis */}
                     <main className="chart-panel panel p-0 border-t border-white/5">
+                        <div className="flex items-center justify-between p-4 bg-black/20 border-b border-white/5 z-20 relative">
+                            <div className="flex gap-1">
+                                {TIMEFRAMES.map(tf => (
+                                    <button 
+                                        key={tf.id} 
+                                        onClick={() => setTimeframe(tf)}
+                                        className={`timeframe-btn ${timeframe.id === tf.id ? 'active' : 'hover:bg-white/5'}`}
+                                    >
+                                        {tf.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="hebrew text-[10px] text-slate-500 font-bold uppercase">גרף היסטורי - {timeframe.label}</div>
+                        </div>
+
                         <div className="flex-1" ref={chartContainerRef}></div>
                         
-                        {/* AI Intelligence Overlay */}
-                        <div className="absolute bottom-6 left-6 right-6 flex gap-4">
-                            <div className="flex-1 bg-blue-600/10 backdrop-blur-md border border-blue-500/20 p-5 rounded-2xl flex justify-between items-center shadow-2xl">
+                        <div className="absolute bottom-6 left-6 right-6 flex gap-4 z-10">
+                            <div className="flex-1 bg-blue-950/20 backdrop-blur-xl border border-blue-500/20 p-5 rounded-2xl flex justify-between items-center shadow-2xl">
                                 <div className="hebrew">
-                                    <div className="text-[10px] font-bold text-blue-400 mb-1 uppercase tracking-widest">ניתוח AI בזמן אמת</div>
+                                    <div className="text-[10px] font-bold text-blue-400 mb-1 uppercase tracking-widest">תובנת AI - {ticker}</div>
                                     <p className="text-sm font-medium text-slate-200">
-                                        {aiAnalysis ? aiAnalysis.reason : "מנתח נתוני שוק ברגע זה..."}
+                                        {aiAnalysis ? aiAnalysis.reason : "מנתח נתוני שוק..."}
                                     </p>
                                 </div>
                                 <div className="text-center bg-blue-600 px-6 py-2 rounded-xl">
@@ -270,27 +304,15 @@
                                     <div className="text-2xl font-black">{aiAnalysis ? aiAnalysis.score : '--'}</div>
                                 </div>
                             </div>
-                            
-                            <div className={`w-64 backdrop-blur-md border p-5 rounded-2xl flex flex-col justify-center items-center shadow-2xl ${
-                                aiAnalysis?.score > 70 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-900/50 border-white/10'
-                            }`}>
-                                <span className="hebrew text-[10px] font-bold text-slate-500 mb-1">המלצת מערכת</span>
-                                <span className={`text-2xl font-black uppercase ${
-                                    aiAnalysis?.score > 70 ? 'text-emerald-500' : 'text-blue-500'
-                                }`}>
-                                    {aiAnalysis ? aiAnalysis.rec : 'Analyzing'}
-                                </span>
-                            </div>
                         </div>
                     </main>
 
-                    {/* Footer */}
-                    <footer className="footer-panel bg-[#0d1117] text-[10px] text-slate-600 flex justify-between uppercase font-bold tracking-tighter">
+                    <footer className="footer-panel bg-[#0d1117] text-[10px] text-slate-600 flex justify-between uppercase font-bold px-6 items-center">
                         <div className="flex gap-6">
-                            <span>DATA SOURCE: ALPHA VANTAGE</span>
-                            <span>MODEL: GEMINI 2.5 FLASH PREVIEW</span>
+                            <span>ALPHA VANTAGE REAL-TIME</span>
+                            <span>TF: {timeframe.func}</span>
                         </div>
-                        <div className="hebrew">מערכת פעילה • נתוני אמת</div>
+                        <div className="hebrew">QUANTA TERMINAL • 2026</div>
                     </footer>
                 </div>
             );
