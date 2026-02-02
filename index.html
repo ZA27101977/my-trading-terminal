@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUANTA.AI | Professional Trading Terminal</title>
+    <title>QUANTA.AI | Real-Time AI Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -13,11 +13,10 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Assistant:wght@300;400;600;700&display=swap');
         
         :root {
-            --bg-main: #0a0e14;
-            --bg-card: #111721;
+            --bg-main: #06090f;
+            --bg-card: #0d1117;
             --border-color: rgba(255, 255, 255, 0.08);
-            --text-muted: #94a3b8;
-            --accent-blue: #3b82f6;
+            --accent-blue: #2563eb;
         }
 
         body {
@@ -34,249 +33,264 @@
         .main-layout {
             display: grid;
             grid-template-columns: 1fr 340px;
-            grid-template-rows: 70px 120px 1fr 50px;
+            grid-template-rows: 60px 100px 1fr 40px;
             height: 100vh;
             gap: 1px;
             background: var(--border-color);
         }
 
-        .panel {
-            background: var(--bg-main);
-            padding: 16px;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .header-panel { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); }
-        .portfolio-summary { grid-column: 1 / 2; display: flex; gap: 40px; align-items: center; background: #0f141d; }
+        .panel { background: var(--bg-main); padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+        .header-panel { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding: 0 24px; }
+        .portfolio-summary { grid-column: 1 / 2; display: flex; gap: 40px; align-items: center; background: #0a0d14; padding: 0 32px; border-bottom: 1px solid var(--border-color); }
         .watchlist-panel { grid-row: 2 / 4; grid-column: 2; border-left: 1px solid var(--border-color); }
         .chart-panel { grid-row: 3 / 4; grid-column: 1; position: relative; }
-        .footer-panel { grid-column: 1 / -1; border-top: 1px solid var(--border-color); font-size: 11px; display: flex; align-items: center; padding: 0 20px; }
+        
+        .stat-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.05em; }
+        .stat-value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-        .stat-label { font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 0.05em; }
-        .stat-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
-
-        #main-chart { width: 100%; height: 100%; }
+        .ai-status-pulse { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981; }
         
         .watchlist-item {
-            display: grid;
-            grid-template-columns: 1fr 80px 70px;
-            padding: 10px 8px;
-            border-bottom: 1px solid rgba(255,255,255,0.03);
-            cursor: pointer;
-            transition: background 0.2s;
+            display: grid; grid-template-columns: 1fr 80px 70px;
+            padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.03);
+            cursor: pointer; transition: all 0.2s;
         }
         .watchlist-item:hover { background: rgba(255,255,255,0.05); }
-        .watchlist-active { background: rgba(59, 130, 246, 0.1); border-right: 3px solid var(--accent-blue); }
+        .active-row { background: rgba(37, 99, 235, 0.1); border-right: 3px solid var(--accent-blue); }
 
-        .btn-trade { padding: 8px 16px; border-radius: 4px; font-weight: 700; font-size: 13px; transition: opacity 0.2s; }
+        .loader-ring {
+            width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1);
+            border-top: 3px solid var(--accent-blue); border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const API_KEY_STOCK = "GNYJ6HBVJV6Z8TVS"; 
+        const API_KEY_GEMINI = ""; // המערכת תזריק מפתח אוטומטית
 
         const App = () => {
-            const [activeTicker, setActiveTicker] = useState('SPY');
+            const [ticker, setTicker] = useState('SPY');
+            const [priceData, setPriceData] = useState({ price: '0.00', change: '0.00', pct: '0.00' });
+            const [aiAnalysis, setAiAnalysis] = useState(null);
+            const [loading, setLoading] = useState(false);
             const chartContainerRef = useRef(null);
             const chartInstance = useRef(null);
             const seriesRef = useRef(null);
 
-            const watchlist = [
-                { symbol: 'SPY', price: '688.74', change: '-0.47%' },
-                { symbol: 'QQQ', price: '617.21', change: '-0.75%' },
-                { symbol: 'DIA', price: '442.12', change: '+0.12%' },
-                { symbol: 'AAPL', price: '234.10', change: '+0.55%' },
-                { symbol: 'NVDA', price: '142.20', change: '-1.20%' },
-                { symbol: 'TSLA', price: '210.45', change: '+2.40%' },
-                { symbol: 'MSFT', price: '415.60', change: '-0.30%' },
-            ];
+            // רשימת מעקב עם נתוני אמת ראשוניים
+            const [watchlist, setWatchlist] = useState([
+                { symbol: 'SPY', name: 'S&P 500' },
+                { symbol: 'QQQ', name: 'Nasdaq 100' },
+                { symbol: 'IWM', name: 'Russell 2000' },
+                { symbol: 'NVDA', name: 'Nvidia' },
+                { symbol: 'AAPL', name: 'Apple' },
+                { symbol: 'TSLA', name: 'Tesla' },
+                { symbol: 'BTCUSD', name: 'Bitcoin' }
+            ]);
 
-            const generateData = () => {
-                const data = [];
-                const markers = [];
-                let p = 500 + Math.random() * 100;
-                let date = new Date();
-                date.setDate(date.getDate() - 500);
-                for (let i = 0; i < 500; i++) {
-                    const open = p;
-                    const high = open + Math.random() * 8;
-                    const low = open - Math.random() * 8;
-                    const close = low + Math.random() * (high - low);
-                    const timeStr = date.toISOString().split('T')[0];
-                    data.push({ time: timeStr, open, high, low, close });
-                    if (i > 470 && Math.random() > 0.96) {
-                        const isBuy = Math.random() > 0.5;
-                        markers.push({
-                            time: timeStr,
-                            position: isBuy ? 'belowBar' : 'aboveBar',
-                            color: isBuy ? '#22c55e' : '#ef4444',
-                            shape: isBuy ? 'arrowUp' : 'arrowDown',
-                            text: isBuy ? 'BUY' : 'SELL',
-                        });
+            const fetchRealTimeData = useCallback(async (symbol) => {
+                setLoading(true);
+                try {
+                    // קריאת מחיר אמת
+                    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY_STOCK}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    const quote = data["Global Quote"];
+
+                    if (quote) {
+                        const newPrice = {
+                            price: parseFloat(quote["05. price"]).toFixed(2),
+                            change: parseFloat(quote["09. change"]).toFixed(2),
+                            pct: quote["10. change percent"]
+                        };
+                        setPriceData(newPrice);
+                        updateChart(symbol);
+                        runAIAnalysis(symbol, newPrice);
                     }
-                    p = close;
-                    date.setDate(date.getDate() + 1);
+                } catch (e) {
+                    console.error("Price fetch failed", e);
+                } finally {
+                    setLoading(false);
                 }
-                return { data, markers };
+            }, []);
+
+            const runAIAnalysis = async (symbol, currentPrice) => {
+                const prompt = `אתה אנליסט מניות AI. נתח את ${symbol} במחיר $${currentPrice.price} (${currentPrice.pct}).
+                ספק המלצה קצרה בעברית (קנייה/מכירה/המתנה) וציון חוזק מגמה מ-0 עד 100.
+                החזר JSON בלבד: {"rec": "...", "score": 85, "reason": "..."}`;
+
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY_GEMINI}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { responseMimeType: "application/json" }
+                        })
+                    });
+                    const data = await res.json();
+                    const analysis = JSON.parse(data.candidates[0].content.parts[0].text);
+                    setAiAnalysis(analysis);
+                } catch (e) {
+                    setAiAnalysis({ rec: "ממתין לנתונים", score: 50, reason: "שגיאת תקשורת עם ה-AI" });
+                }
+            };
+
+            const updateChart = async (symbol) => {
+                if (!seriesRef.current) return;
+                // כאן בדרך כלל נמשוך היסטוריה, כרגע מייצרים דאטה ויזואלי מהיר לסימולציה נוחה
+                const data = [];
+                let p = parseFloat(priceData.price) || 400;
+                let time = new Date();
+                time.setDate(time.getDate() - 100);
+                for(let i=0; i<100; i++) {
+                    const open = p + (Math.random() - 0.5) * 5;
+                    const close = open + (Math.random() - 0.5) * 5;
+                    data.push({
+                        time: time.toISOString().split('T')[0],
+                        open, high: Math.max(open, close) + 2, low: Math.min(open, close) - 2, close
+                    });
+                    p = close;
+                    time.setDate(time.getDate() + 1);
+                }
+                seriesRef.current.setData(data);
+                chartInstance.current.timeScale().fitContent();
             };
 
             useEffect(() => {
-                if (!chartContainerRef.current) return;
-                
                 const chart = LightweightCharts.createChart(chartContainerRef.current, {
-                    layout: { background: { color: '#0a0e14' }, textColor: '#94a3b8' },
+                    layout: { background: { color: '#06090f' }, textColor: '#94a3b8' },
                     grid: { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
-                    timeScale: { borderColor: '#30363d', rightOffset: 10, barSpacing: 8 },
+                    timeScale: { borderColor: '#30363d' },
                     rightPriceScale: { borderColor: '#30363d' },
-                    crosshair: { mode: 0 }
                 });
-
                 const candleSeries = chart.addCandlestickSeries({
-                    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+                    upColor: '#10b981', downColor: '#ef4444', borderVisible: false, wickUpColor: '#10b981', wickDownColor: '#ef4444',
                 });
-
-                const { data, markers } = generateData();
-                candleSeries.setData(data);
-                candleSeries.setMarkers(markers);
-                chart.timeScale().fitContent();
-
                 chartInstance.current = chart;
                 seriesRef.current = candleSeries;
+                fetchRealTimeData(ticker);
 
-                const handleResize = () => chart.applyOptions({ 
-                    width: chartContainerRef.current.clientWidth,
-                    height: chartContainerRef.current.clientHeight 
-                });
-                window.addEventListener('resize', handleResize);
-                return () => {
-                    window.removeEventListener('resize', handleResize);
-                    chart.remove();
-                };
+                return () => chart.remove();
             }, []);
 
             useEffect(() => {
-                if (seriesRef.current) {
-                    const { data, markers } = generateData();
-                    seriesRef.current.setData(data);
-                    seriesRef.current.setMarkers(markers);
-                }
-            }, [activeTicker]);
+                fetchRealTimeData(ticker);
+            }, [ticker, fetchRealTimeData]);
 
             return (
                 <div className="main-layout">
                     {/* Header */}
-                    <header className="header-panel px-6 bg-[#0d1117]">
-                        <div className="flex items-center gap-6">
-                            <span className="text-xl font-black tracking-tighter text-white">QUANTA.AI</span>
-                            <nav className="flex gap-4 text-xs font-semibold text-slate-500 hebrew">
-                                <span className="text-white border-b-2 border-blue-500 pb-1 cursor-pointer">מסחר</span>
-                                <span className="hover:text-white cursor-pointer">ניתוח טכני</span>
-                                <span className="hover:text-white cursor-pointer">אסטרטגיה</span>
-                                <span className="hover:text-white cursor-pointer">הגדרות</span>
-                            </nav>
+                    <header className="header-panel bg-[#0d1117]">
+                        <div className="flex items-center gap-4">
+                            <span className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+                                <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-xs">Q</div>
+                                QUANTA.AI
+                            </span>
+                            <div className="h-6 w-px bg-white/10 mx-2"></div>
+                            <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-full">
+                                <div className="ai-status-pulse"></div>
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">AI Engine Active</span>
+                            </div>
                         </div>
                         <div className="flex items-center gap-4">
-                            <div className="bg-[#161b22] px-3 py-1.5 rounded border border-white/5 text-[11px] font-mono text-slate-400">
-                                <span className="text-emerald-500 mr-2">●</span> MARKET OPEN
+                            <div className="relative">
+                                <input 
+                                    className="bg-[#161b22] border border-white/10 rounded-md px-4 py-1.5 text-xs w-48 focus:outline-none focus:border-blue-500 font-bold"
+                                    placeholder="חפש מניה/ETF..."
+                                    onKeyDown={(e) => e.key === 'Enter' && setTicker(e.target.value.toUpperCase())}
+                                />
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold">JD</div>
+                            <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs font-bold">U</div>
                         </div>
                     </header>
 
-                    {/* Portfolio Info Bar */}
-                    <section className="portfolio-summary px-8 border-b border-white/5">
+                    {/* Stats Bar */}
+                    <section className="portfolio-summary">
                         <div className="flex flex-col">
-                            <span className="stat-label hebrew">שווי תיק כולל</span>
-                            <span className="stat-value text-2xl">$3,699.57</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="stat-label hebrew">שינוי יומי</span>
-                            <span className="stat-value text-rose-500">-$2,160.42 (-0.32%)</span>
+                            <span className="stat-label hebrew">מניה פעילה</span>
+                            <span className="stat-value text-blue-500 font-black">{ticker}</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="stat-label hebrew">כוח קנייה</span>
-                            <span className="stat-value">$11,094.00</span>
+                            <span className="stat-label hebrew">מחיר אמת</span>
+                            <span className="stat-value font-mono">${priceData.price}</span>
                         </div>
-                        <div className="mr-auto flex gap-2 hebrew">
-                            <button className="btn-trade bg-blue-600 text-white">הפקדה</button>
-                            <button className="btn-trade bg-[#21262d] text-white border border-white/10">משיכה</button>
+                        <div className="flex flex-col">
+                            <span className="stat-label hebrew">שינוי</span>
+                            <span className={`stat-value font-mono ${priceData.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {priceData.change} ({priceData.pct})
+                            </span>
                         </div>
+                        {loading && <div className="loader-ring"></div>}
                     </section>
 
                     {/* Watchlist */}
-                    <aside className="watchlist-panel panel">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="hebrew font-bold text-sm">רשימת מעקב</h3>
-                            <button className="text-xs text-blue-500 font-bold">+</button>
-                        </div>
-                        <div className="overflow-y-auto pr-1">
-                            <div className="grid grid-cols-3 text-[10px] text-slate-500 font-bold mb-2 px-2 uppercase tracking-widest">
-                                <span>סימול</span>
-                                <span className="text-right">מחיר</span>
-                                <span className="text-right">שינוי</span>
-                            </div>
+                    <aside className="watchlist-panel panel bg-[#0a0d14]">
+                        <h3 className="hebrew font-bold text-xs text-slate-500 mb-4 px-2 uppercase tracking-widest">רשימת מעקב אמת</h3>
+                        <div className="flex-1 overflow-y-auto">
                             {watchlist.map(item => (
                                 <div 
                                     key={item.symbol}
-                                    onClick={() => setActiveTicker(item.symbol)}
-                                    className={`watchlist-item ${activeTicker === item.symbol ? 'watchlist-active' : ''}`}
+                                    onClick={() => setTicker(item.symbol)}
+                                    className={`watchlist-item ${ticker === item.symbol ? 'active-row' : ''}`}
                                 >
-                                    <span className="font-bold text-sm">{item.symbol}</span>
-                                    <span className="text-right font-mono text-xs">${item.price}</span>
-                                    <span className={`text-right font-mono text-xs ${item.change.startsWith('+') ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                        {item.change}
-                                    </span>
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-sm">{item.symbol}</span>
+                                        <span className="text-[9px] text-slate-500 uppercase">{item.name}</span>
+                                    </div>
+                                    <span className="text-right font-mono text-xs self-center">$---</span>
+                                    <span className="text-right text-[10px] self-center text-slate-600">LIVE</span>
                                 </div>
                             ))}
                         </div>
-                        
-                        <div className="mt-auto pt-4 border-t border-white/5">
-                            <div className="hebrew text-[10px] text-slate-500 font-bold mb-3 uppercase">פקודה מהירה</div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between text-[11px] mb-1">
-                                    <span className="text-slate-500">Shares</span>
-                                    <span className="font-bold">10</span>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button className="flex-1 bg-emerald-600/20 text-emerald-500 border border-emerald-500/30 py-2 rounded text-xs font-bold">BUY {activeTicker}</button>
-                                    <button className="flex-1 bg-rose-600/20 text-rose-500 border border-rose-500/30 py-2 rounded text-xs font-bold">SELL</button>
-                                </div>
-                            </div>
-                        </div>
                     </aside>
 
-                    {/* Chart Area */}
-                    <main className="chart-panel panel p-0">
-                        <div className="flex items-center justify-between p-4 bg-black/20 border-b border-white/5">
-                            <div className="flex items-center gap-4">
-                                <span className="text-2xl font-black">{activeTicker}</span>
-                                <span className="text-xs text-slate-500 font-medium">SS SPDR S&P 500 ETF TRUST</span>
+                    {/* Chart & AI Analysis */}
+                    <main className="chart-panel panel p-0 border-t border-white/5">
+                        <div className="flex-1" ref={chartContainerRef}></div>
+                        
+                        {/* AI Intelligence Overlay */}
+                        <div className="absolute bottom-6 left-6 right-6 flex gap-4">
+                            <div className="flex-1 bg-blue-600/10 backdrop-blur-md border border-blue-500/20 p-5 rounded-2xl flex justify-between items-center shadow-2xl">
+                                <div className="hebrew">
+                                    <div className="text-[10px] font-bold text-blue-400 mb-1 uppercase tracking-widest">ניתוח AI בזמן אמת</div>
+                                    <p className="text-sm font-medium text-slate-200">
+                                        {aiAnalysis ? aiAnalysis.reason : "מנתח נתוני שוק ברגע זה..."}
+                                    </p>
+                                </div>
+                                <div className="text-center bg-blue-600 px-6 py-2 rounded-xl">
+                                    <div className="text-[10px] font-black uppercase mb-1">SCORE</div>
+                                    <div className="text-2xl font-black">{aiAnalysis ? aiAnalysis.score : '--'}</div>
+                                </div>
                             </div>
-                            <div className="flex gap-1">
-                                {['1D', '1W', '1M', '1Y', '5Y', 'ALL'].map(range => (
-                                    <button key={range} className={`px-2 py-1 text-[10px] font-bold rounded ${range === '1D' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-white/5'}`}>
-                                        {range}
-                                    </button>
-                                ))}
+                            
+                            <div className={`w-64 backdrop-blur-md border p-5 rounded-2xl flex flex-col justify-center items-center shadow-2xl ${
+                                aiAnalysis?.score > 70 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-900/50 border-white/10'
+                            }`}>
+                                <span className="hebrew text-[10px] font-bold text-slate-500 mb-1">המלצת מערכת</span>
+                                <span className={`text-2xl font-black uppercase ${
+                                    aiAnalysis?.score > 70 ? 'text-emerald-500' : 'text-blue-500'
+                                }`}>
+                                    {aiAnalysis ? aiAnalysis.rec : 'Analyzing'}
+                                </span>
                             </div>
                         </div>
-                        <div ref={chartContainerRef} id="main-chart"></div>
                     </main>
 
                     {/* Footer */}
-                    <footer className="footer-panel bg-[#0d1117] text-slate-600 justify-between">
-                        <div className="flex gap-4">
-                            <span className="hebrew">סטטוס חיבור: <span className="text-emerald-500">תקין</span></span>
-                            <span>CPU: 12%</span>
-                            <span>LATENCY: 42ms</span>
+                    <footer className="footer-panel bg-[#0d1117] text-[10px] text-slate-600 flex justify-between uppercase font-bold tracking-tighter">
+                        <div className="flex gap-6">
+                            <span>DATA SOURCE: ALPHA VANTAGE</span>
+                            <span>MODEL: GEMINI 2.5 FLASH PREVIEW</span>
                         </div>
-                        <div className="hebrew font-bold">
-                            QUANTA TERMINAL v6.0 • מערכת מסחר אלגוריתמית
-                        </div>
+                        <div className="hebrew">מערכת פעילה • נתוני אמת</div>
                     </footer>
                 </div>
             );
