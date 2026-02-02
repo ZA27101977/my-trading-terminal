@@ -3,18 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUANTA PRO | AI Trading Terminal</title>
+    <title>QUANTA.AI | Professional Trading Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Assistant:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Assistant:wght@300;400;600;700&display=swap');
         
+        :root {
+            --bg-main: #0a0e14;
+            --bg-card: #111721;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-muted: #94a3b8;
+            --accent-blue: #3b82f6;
+        }
+
         body {
-            background-color: #05070a;
-            color: #f8fafc;
+            background-color: var(--bg-main);
+            color: #ffffff;
             font-family: 'Inter', sans-serif;
             margin: 0;
             height: 100vh;
@@ -22,53 +30,47 @@
         }
 
         .hebrew { font-family: 'Assistant', sans-serif; direction: rtl; }
-        .mono { font-family: 'JetBrains Mono', monospace; }
-
-        .dashboard-grid {
+        
+        .main-layout {
             display: grid;
-            grid-template-columns: 260px 1fr 320px;
-            grid-template-rows: 60px 1fr;
+            grid-template-columns: 1fr 340px;
+            grid-template-rows: 70px 120px 1fr 50px;
             height: 100vh;
-            gap: 12px;
-            padding: 12px;
+            gap: 1px;
+            background: var(--border-color);
         }
 
-        .card {
-            background: #0c111d;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
+        .panel {
+            background: var(--bg-main);
+            padding: 16px;
             overflow: hidden;
             display: flex;
             flex-direction: column;
         }
 
-        #chart-container {
-            width: 100%;
-            height: 100%;
-            min-height: 400px;
-        }
+        .header-panel { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); }
+        .portfolio-summary { grid-column: 1 / 2; display: flex; gap: 40px; align-items: center; background: #0f141d; }
+        .watchlist-panel { grid-row: 2 / 4; grid-column: 2; border-left: 1px solid var(--border-color); }
+        .chart-panel { grid-row: 3 / 4; grid-column: 1; position: relative; }
+        .footer-panel { grid-column: 1 / -1; border-top: 1px solid var(--border-color); font-size: 11px; display: flex; align-items: center; padding: 0 20px; }
 
-        .chart-controls {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            z-index: 20;
-            display: flex;
-            gap: 8px;
-        }
+        .stat-label { font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; letter-spacing: 0.05em; }
+        .stat-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-        .control-btn {
-            background: rgba(30, 41, 59, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 12px;
+        #main-chart { width: 100%; height: 100%; }
+        
+        .watchlist-item {
+            display: grid;
+            grid-template-columns: 1fr 80px 70px;
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
             cursor: pointer;
-            backdrop-filter: blur(4px);
+            transition: background 0.2s;
         }
+        .watchlist-item:hover { background: rgba(255,255,255,0.05); }
+        .watchlist-active { background: rgba(59, 130, 246, 0.1); border-right: 3px solid var(--accent-blue); }
 
-        .control-btn:hover { background: rgba(59, 130, 246, 0.5); }
+        .btn-trade { padding: 8px 16px; border-radius: 4px; font-weight: 700; font-size: 13px; transition: opacity 0.2s; }
     </style>
 </head>
 <body>
@@ -78,46 +80,44 @@
         const { useState, useEffect, useRef } = React;
 
         const App = () => {
-            const [activeTicker, setActiveTicker] = useState('NVDA');
+            const [activeTicker, setActiveTicker] = useState('SPY');
             const chartContainerRef = useRef(null);
             const chartInstance = useRef(null);
             const seriesRef = useRef(null);
 
-            // ייצור היסטוריה ארוכה (500 ימים) וסימני קנייה/מכירה
-            const getExtendedHistory = () => {
+            const watchlist = [
+                { symbol: 'SPY', price: '688.74', change: '-0.47%' },
+                { symbol: 'QQQ', price: '617.21', change: '-0.75%' },
+                { symbol: 'DIA', price: '442.12', change: '+0.12%' },
+                { symbol: 'AAPL', price: '234.10', change: '+0.55%' },
+                { symbol: 'NVDA', price: '142.20', change: '-1.20%' },
+                { symbol: 'TSLA', price: '210.45', change: '+2.40%' },
+                { symbol: 'MSFT', price: '415.60', change: '-0.30%' },
+            ];
+
+            const generateData = () => {
                 const data = [];
                 const markers = [];
-                let p = 100 + Math.random() * 100;
+                let p = 500 + Math.random() * 100;
                 let date = new Date();
                 date.setDate(date.getDate() - 500);
-
                 for (let i = 0; i < 500; i++) {
                     const open = p;
-                    const high = open + Math.random() * 10;
-                    const low = open - Math.random() * 10;
+                    const high = open + Math.random() * 8;
+                    const low = open - Math.random() * 8;
                     const close = low + Math.random() * (high - low);
                     const timeStr = date.toISOString().split('T')[0];
-                    
-                    data.push({
-                        time: timeStr,
-                        open: parseFloat(open.toFixed(2)),
-                        high: parseFloat(high.toFixed(2)),
-                        low: parseFloat(low.toFixed(2)),
-                        close: parseFloat(close.toFixed(2))
-                    });
-
-                    // הוספת המלצות AI באופן אקראי על הגרף
-                    if (i > 450 && Math.random() > 0.95) {
-                        const type = Math.random() > 0.5 ? 'buy' : 'sell';
+                    data.push({ time: timeStr, open, high, low, close });
+                    if (i > 470 && Math.random() > 0.96) {
+                        const isBuy = Math.random() > 0.5;
                         markers.push({
                             time: timeStr,
-                            position: type === 'buy' ? 'belowBar' : 'aboveBar',
-                            color: type === 'buy' ? '#10b981' : '#f43f5e',
-                            shape: type === 'buy' ? 'arrowUp' : 'arrowDown',
-                            text: type === 'buy' ? 'AI BUY' : 'AI SELL',
+                            position: isBuy ? 'belowBar' : 'aboveBar',
+                            color: isBuy ? '#22c55e' : '#ef4444',
+                            shape: isBuy ? 'arrowUp' : 'arrowDown',
+                            text: isBuy ? 'BUY' : 'SELL',
                         });
                     }
-
                     p = close;
                     date.setDate(date.getDate() + 1);
                 }
@@ -126,171 +126,157 @@
 
             useEffect(() => {
                 if (!chartContainerRef.current) return;
+                
+                const chart = LightweightCharts.createChart(chartContainerRef.current, {
+                    layout: { background: { color: '#0a0e14' }, textColor: '#94a3b8' },
+                    grid: { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
+                    timeScale: { borderColor: '#30363d', rightOffset: 10, barSpacing: 8 },
+                    rightPriceScale: { borderColor: '#30363d' },
+                    crosshair: { mode: 0 }
+                });
 
-                const timer = setTimeout(() => {
-                    if (typeof LightweightCharts === 'undefined') return;
+                const candleSeries = chart.addCandlestickSeries({
+                    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+                });
 
-                    const chart = LightweightCharts.createChart(chartContainerRef.current, {
-                        layout: {
-                            background: { color: '#0c111d' },
-                            textColor: '#94a3b8',
-                        },
-                        grid: {
-                            vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-                            horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
-                        },
-                        timeScale: {
-                            borderColor: '#334155',
-                            timeVisible: true,
-                            secondsVisible: false,
-                            shiftVisibleRangeOnNewBar: true,
-                            rightOffset: 12, // מרווח מהצד ליצירת "עתיד"
-                            barSpacing: 6, // זום התחלתי נוח
-                        },
-                        rightPriceScale: {
-                            borderColor: '#334155',
-                            autoScale: true,
-                        },
-                        handleScale: {
-                            mouseWheel: true,
-                            pinch: true,
-                        },
-                        handleScroll: {
-                            mouseWheel: true,
-                            pressedMouseMove: true,
-                        }
-                    });
+                const { data, markers } = generateData();
+                candleSeries.setData(data);
+                candleSeries.setMarkers(markers);
+                chart.timeScale().fitContent();
 
-                    const candleSeries = chart.addCandlestickSeries({
-                        upColor: '#10b981',
-                        downColor: '#f43f5e',
-                        borderVisible: false,
-                        wickUpColor: '#10b981',
-                        wickDownColor: '#f43f5e',
-                    });
+                chartInstance.current = chart;
+                seriesRef.current = candleSeries;
 
-                    const { data, markers } = getExtendedHistory();
-                    candleSeries.setData(data);
-                    candleSeries.setMarkers(markers);
-                    
-                    // התמקדות בנרות האחרונים (זום פנימה בסיום)
-                    chart.timeScale().setVisibleRange({
-                        from: data[data.length - 60].time,
-                        to: data[data.length - 1].time,
-                    });
-
-                    chartInstance.current = chart;
-                    seriesRef.current = candleSeries;
-
-                    const handleResize = () => {
-                        chart.applyOptions({ 
-                            width: chartContainerRef.current.clientWidth,
-                            height: chartContainerRef.current.clientHeight 
-                        });
-                    };
-                    window.addEventListener('resize', handleResize);
-                }, 200);
-
+                const handleResize = () => chart.applyOptions({ 
+                    width: chartContainerRef.current.clientWidth,
+                    height: chartContainerRef.current.clientHeight 
+                });
+                window.addEventListener('resize', handleResize);
                 return () => {
-                    clearTimeout(timer);
-                    if (chartInstance.current) chartInstance.current.remove();
+                    window.removeEventListener('resize', handleResize);
+                    chart.remove();
                 };
             }, []);
 
             useEffect(() => {
                 if (seriesRef.current) {
-                    const { data, markers } = getExtendedHistory();
+                    const { data, markers } = generateData();
                     seriesRef.current.setData(data);
                     seriesRef.current.setMarkers(markers);
                 }
             }, [activeTicker]);
 
-            const handleZoom = (direction) => {
-                if (!chartInstance.current) return;
-                const ts = chartInstance.current.timeScale();
-                if (direction === 'in') ts.zoomIn(1);
-                else if (direction === 'out') ts.zoomOut(1);
-                else ts.fitContent();
-            };
-
             return (
-                <div className="dashboard-grid">
-                    <header className="col-span-3 card flex-row items-center justify-between px-6 bg-[#080c14]">
-                        <div className="flex items-center gap-4">
-                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold italic">Q</div>
-                            <span className="font-black tracking-tighter text-xl">QUANTA PRO</span>
+                <div className="main-layout">
+                    {/* Header */}
+                    <header className="header-panel px-6 bg-[#0d1117]">
+                        <div className="flex items-center gap-6">
+                            <span className="text-xl font-black tracking-tighter text-white">QUANTA.AI</span>
+                            <nav className="flex gap-4 text-xs font-semibold text-slate-500 hebrew">
+                                <span className="text-white border-b-2 border-blue-500 pb-1 cursor-pointer">מסחר</span>
+                                <span className="hover:text-white cursor-pointer">ניתוח טכני</span>
+                                <span className="hover:text-white cursor-pointer">אסטרטגיה</span>
+                                <span className="hover:text-white cursor-pointer">הגדרות</span>
+                            </nav>
                         </div>
-                        <div className="hebrew text-emerald-500 font-bold text-sm">ניתוח AI פעיל • היסטוריה מורחבת</div>
+                        <div className="flex items-center gap-4">
+                            <div className="bg-[#161b22] px-3 py-1.5 rounded border border-white/5 text-[11px] font-mono text-slate-400">
+                                <span className="text-emerald-500 mr-2">●</span> MARKET OPEN
+                            </div>
+                            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold">JD</div>
+                        </div>
                     </header>
 
-                    <aside className="card p-3 gap-2">
-                        <div className="hebrew text-[10px] text-slate-500 font-bold mb-2 mr-2 uppercase tracking-widest">נכסים למעקב</div>
-                        {['NVDA', 'AAPL', 'TSLA', 'MSFT', 'BTC', 'ETH'].map(t => (
-                            <div key={t} 
-                                 onClick={() => setActiveTicker(t)}
-                                 className={`p-3 rounded-xl cursor-pointer transition-all ${activeTicker === t ? 'bg-blue-600/20 border border-blue-500/50 text-white' : 'hover:bg-white/5 border border-transparent text-slate-400'}`}>
-                                <div className="mono font-bold">{t}</div>
+                    {/* Portfolio Info Bar */}
+                    <section className="portfolio-summary px-8 border-b border-white/5">
+                        <div className="flex flex-col">
+                            <span className="stat-label hebrew">שווי תיק כולל</span>
+                            <span className="stat-value text-2xl">$3,699.57</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="stat-label hebrew">שינוי יומי</span>
+                            <span className="stat-value text-rose-500">-$2,160.42 (-0.32%)</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="stat-label hebrew">כוח קנייה</span>
+                            <span className="stat-value">$11,094.00</span>
+                        </div>
+                        <div className="mr-auto flex gap-2 hebrew">
+                            <button className="btn-trade bg-blue-600 text-white">הפקדה</button>
+                            <button className="btn-trade bg-[#21262d] text-white border border-white/10">משיכה</button>
+                        </div>
+                    </section>
+
+                    {/* Watchlist */}
+                    <aside className="watchlist-panel panel">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="hebrew font-bold text-sm">רשימת מעקב</h3>
+                            <button className="text-xs text-blue-500 font-bold">+</button>
+                        </div>
+                        <div className="overflow-y-auto pr-1">
+                            <div className="grid grid-cols-3 text-[10px] text-slate-500 font-bold mb-2 px-2 uppercase tracking-widest">
+                                <span>סימול</span>
+                                <span className="text-right">מחיר</span>
+                                <span className="text-right">שינוי</span>
                             </div>
-                        ))}
+                            {watchlist.map(item => (
+                                <div 
+                                    key={item.symbol}
+                                    onClick={() => setActiveTicker(item.symbol)}
+                                    className={`watchlist-item ${activeTicker === item.symbol ? 'watchlist-active' : ''}`}
+                                >
+                                    <span className="font-bold text-sm">{item.symbol}</span>
+                                    <span className="text-right font-mono text-xs">${item.price}</span>
+                                    <span className={`text-right font-mono text-xs ${item.change.startsWith('+') ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                        {item.change}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <div className="mt-auto pt-4 border-t border-white/5">
+                            <div className="hebrew text-[10px] text-slate-500 font-bold mb-3 uppercase">פקודה מהירה</div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-[11px] mb-1">
+                                    <span className="text-slate-500">Shares</span>
+                                    <span className="font-bold">10</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button className="flex-1 bg-emerald-600/20 text-emerald-500 border border-emerald-500/30 py-2 rounded text-xs font-bold">BUY {activeTicker}</button>
+                                    <button className="flex-1 bg-rose-600/20 text-rose-500 border border-rose-500/30 py-2 rounded text-xs font-bold">SELL</button>
+                                </div>
+                            </div>
+                        </div>
                     </aside>
 
-                    <main className="flex flex-col gap-3">
-                        <div className="card p-6 flex flex-row justify-between items-center bg-gradient-to-r from-slate-900 to-black shadow-2xl">
-                            <h2 className="text-4xl font-black mono tracking-tighter">{activeTicker}</h2>
-                            <div className="text-right">
-                                <div className="hebrew text-[10px] text-slate-500 font-bold">ביצועים אחרונים</div>
-                                <div className="text-3xl font-bold mono text-emerald-400">+$24.15</div>
+                    {/* Chart Area */}
+                    <main className="chart-panel panel p-0">
+                        <div className="flex items-center justify-between p-4 bg-black/20 border-b border-white/5">
+                            <div className="flex items-center gap-4">
+                                <span className="text-2xl font-black">{activeTicker}</span>
+                                <span className="text-xs text-slate-500 font-medium">SS SPDR S&P 500 ETF TRUST</span>
+                            </div>
+                            <div className="flex gap-1">
+                                {['1D', '1W', '1M', '1Y', '5Y', 'ALL'].map(range => (
+                                    <button key={range} className={`px-2 py-1 text-[10px] font-bold rounded ${range === '1D' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-white/5'}`}>
+                                        {range}
+                                    </button>
+                                ))}
                             </div>
                         </div>
-
-                        <div className="card flex-1 p-0 relative min-h-0">
-                            <div className="absolute top-4 left-6 z-10 flex flex-col gap-2">
-                                <div className="hebrew text-[10px] font-bold bg-blue-600 text-white p-2 rounded shadow-lg">
-                                    המלצות קנייה/מכירה מוצגות ישירות על הנרות
-                                </div>
-                                <div className="hebrew text-[9px] bg-black/60 backdrop-blur-sm p-2 rounded border border-white/10 text-slate-400">
-                                    500 ימי היסטוריה • גלול אחורה לצפייה
-                                </div>
-                            </div>
-
-                            <div className="chart-controls">
-                                <button onClick={() => handleZoom('in')} className="control-btn">Zoom +</button>
-                                <button onClick={() => handleZoom('out')} className="control-btn">Zoom -</button>
-                                <button onClick={() => handleZoom('fit')} className="control-btn">Fit All</button>
-                            </div>
-
-                            <div ref={chartContainerRef} id="chart-container"></div>
-                        </div>
+                        <div ref={chartContainerRef} id="main-chart"></div>
                     </main>
 
-                    <aside className="card p-5">
-                        <h3 className="hebrew font-bold mb-4 border-b border-white/5 pb-2 uppercase text-xs tracking-widest text-slate-400">לוח בקרה</h3>
-                        
-                        <div className="space-y-4">
-                            <div className="bg-slate-950 p-4 rounded-xl border border-white/5">
-                                <div className="hebrew text-[10px] text-slate-500 mb-2">סטטוס אלגוריתם</div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                    <span className="mono text-xs font-bold text-emerald-400 uppercase tracking-tighter">Scanning Support Levels</span>
-                                </div>
-                            </div>
-
-                            <button className="w-full bg-blue-600 py-4 rounded-xl font-bold uppercase text-xs shadow-lg shadow-blue-900/20 hover:scale-[1.02] transition-transform">
-                                Execute AI Strategy
-                            </button>
+                    {/* Footer */}
+                    <footer className="footer-panel bg-[#0d1117] text-slate-600 justify-between">
+                        <div className="flex gap-4">
+                            <span className="hebrew">סטטוס חיבור: <span className="text-emerald-500">תקין</span></span>
+                            <span>CPU: 12%</span>
+                            <span>LATENCY: 42ms</span>
                         </div>
-                        
-                        <div className="mt-8 bg-blue-500/5 p-4 rounded-xl border-r-4 border-blue-500 text-right">
-                            <h4 className="hebrew text-[10px] text-blue-400 font-bold mb-2">סיכום טכני</h4>
-                            <p className="hebrew text-xs leading-relaxed text-slate-300 italic">
-                                שים לב לחיצים בגרף. הצבע הירוק מסמן נקודות כניסה מומלצות לפי מודל ה-RSI והמומנטום.
-                            </p>
+                        <div className="hebrew font-bold">
+                            QUANTA TERMINAL v6.0 • מערכת מסחר אלגוריתמית
                         </div>
-                    </aside>
-
-                    <footer className="col-span-3 flex items-center justify-between px-4 text-[9px] text-slate-600 font-bold uppercase tracking-widest border-t border-white/5">
-                        <span>Terminal Engine v5.1</span>
-                        <span className="hebrew opacity-50">קוואנטה פרו • ניתוח היסטורי מורחב</span>
                     </footer>
                 </div>
             );
