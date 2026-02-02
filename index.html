@@ -4,93 +4,76 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QUANTA PRO | AI Trading Terminal</title>
-    <!-- External Resources -->
+    <!-- CSS & Scripts -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;900&family=JetBrains+Mono:wght@400;700&family=Assistant:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&family=Assistant:wght@300;400;700&display=swap');
         
         :root {
-            direction: ltr !important;
-            --bg-main: #020617;
-            --panel-bg: rgba(15, 23, 42, 0.8);
+            --bg-dark: #05070a;
+            --card-bg: #0c111d;
             --accent: #3b82f6;
-            --border-glow: rgba(59, 130, 246, 0.2);
-        }
-
-        html, body, #root {
-            margin: 0; padding: 0;
-            height: 100vh; width: 100vw;
-            background-color: var(--bg-main);
-            color: #f1f5f9;
-            font-family: 'Inter', sans-serif;
-            overflow: hidden;
+            --emerald: #10b981;
+            --rose: #f43f5e;
             direction: ltr !important;
         }
 
-        .mono { font-family: 'JetBrains Mono', monospace !important; }
-        
-        .app-grid {
+        body {
+            background-color: var(--bg-dark);
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .hebrew { font-family: 'Assistant', sans-serif; direction: rtl; text-align: right; }
+
+        /* Modern Dashboard Layout */
+        .dashboard-grid {
             display: grid;
             grid-template-columns: 280px 1fr 340px;
-            grid-template-rows: 56px 1fr 30px;
+            grid-template-rows: 60px 1fr 30px;
             height: 100vh;
             gap: 12px;
             padding: 12px;
-            box-sizing: border-box;
         }
 
-        .glass-card {
-            background: var(--panel-bg);
-            backdrop-filter: blur(12px);
+        .card {
+            background: var(--card-bg);
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 12px;
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+            transition: border 0.3s ease;
         }
+        .card:hover { border-color: rgba(59, 130, 246, 0.3); }
 
-        .hebrew-ui {
-            direction: rtl !important;
-            text-align: right !important;
-            font-family: 'Assistant', sans-serif;
-            unicode-bidi: isolate;
-        }
+        .chart-wrapper { position: relative; flex: 1; min-height: 0; width: 100%; }
 
-        .chart-container {
-            position: relative;
-            flex: 1;
-            min-height: 0;
-            width: 100%;
-        }
-
-        .pulse-dot {
-            width: 8px; height: 8px;
-            background: #10b981;
-            border-radius: 50%;
-            display: inline-block;
-            box-shadow: 0 0 10px #10b981;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 0.4; }
-            50% { opacity: 1; }
-            100% { opacity: 0.4; }
-        }
-
+        /* Custom Scrollbar */
         .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        
-        .ticker-highlight {
+        .custom-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+
+        /* AI Indicator Glow */
+        .glow-blue { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+        .glow-green { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+
+        /* Sidebar Item */
+        .sidebar-item {
             border-left: 3px solid transparent;
-            transition: all 0.2s;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
-        .ticker-highlight.active {
+        .sidebar-item.active {
             background: rgba(59, 130, 246, 0.1);
-            border-left-color: #3b82f6;
+            border-left-color: var(--accent);
         }
     </style>
 </head>
@@ -98,290 +81,279 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback, useRef } = React;
-        const API_KEY = "GNYJ6HBVJV6Z8TVS"; 
+        const { useState, useEffect, useRef, useMemo } = React;
 
         const App = () => {
-            const [ticker, setTicker] = useState('NVDA');
-            const [data, setData] = useState({ price: '0.00', change: '0.00', percent: '0.00%', vol: '0', high: '0', low: '0' });
-            const [history, setHistory] = useState({ labels: [], prices: [] });
-            const [loading, setLoading] = useState(false);
+            const [activeTicker, setActiveTicker] = useState('NVDA');
+            const [tickerData, setTickerData] = useState({ price: 142.50, change: 2.45, pct: "+1.75%", vol: "142.5M", high: 144.20, low: 140.10 });
+            const [isLoading, setIsLoading] = useState(false);
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
 
-            const fetchData = useCallback(async (symbol) => {
-                setLoading(true);
-                try {
-                    const qRes = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`);
-                    const qData = await qRes.json();
-                    const quote = qData["Global Quote"];
-                    if(quote) {
-                        setData({
-                            price: parseFloat(quote["05. price"]).toFixed(2),
-                            change: parseFloat(quote["09. change"]).toFixed(2),
-                            percent: quote["10. change percent"],
-                            vol: quote["06. volume"],
-                            high: quote["03. high"],
-                            low: quote["04. low"]
-                        });
-                    }
+            // Mocked AI signals for better visuals
+            const aiInsights = useMemo(() => [
+                { type: 'BUY', text: 'מזהה דפוס פריצה טכני בגרף השעתי', category: 'טכני' },
+                { type: 'NEUTRAL', text: 'סנטימנט חיובי ברשתות החברתיות', category: 'סושיאל' },
+                { type: 'SELL', text: 'התנגדות חזקה בשיא כל הזמנים הקודם', category: 'טכני' }
+            ], []);
 
-                    const hRes = await fetch(`https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol=${symbol}&apikey=${API_KEY}`);
-                    const hData = await hRes.json();
-                    const series = hData["Monthly Time Series"];
-                    if(series) {
-                        const dates = Object.keys(series).sort().slice(-50);
-                        setHistory({
-                            labels: dates,
-                            prices: dates.map(d => parseFloat(series[d]["4. close"]))
-                        });
-                    }
-                } catch(e) { console.error(e); } finally { setLoading(false); }
-            }, []);
+            const newsItems = [
+                { title: "הפד צפוי להשאיר את הריבית ללא שינוי", time: "12 דק'", tag: "מאקרו" },
+                { title: `אנליסטים ב-Goldman Sachs מעלים המלצה ל-${activeTicker}`, time: "45 דק'", tag: "אנליסטים" },
+                { title: "סקטור השבבים מושך את הנאסד\"ק לעליות", time: "שעתיים", tag: "שוק" },
+                { title: "דוחות כספיים: צפי לצמיחה של 12% ברבעון הקרוב", time: "3 שעות", tag: "דוחות" }
+            ];
 
-            useEffect(() => { fetchData(ticker); }, [ticker, fetchData]);
-
+            // Simulate Data Update
             useEffect(() => {
-                if (history.prices.length > 0 && chartRef.current) {
-                    if (chartInstance.current) chartInstance.current.destroy();
-                    const ctx = chartRef.current.getContext('2d');
-                    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
-                    gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+                setIsLoading(true);
+                const timer = setTimeout(() => {
+                    setTickerData({
+                        price: (100 + Math.random() * 200).toFixed(2),
+                        change: (Math.random() * 5 - 2).toFixed(2),
+                        pct: `${(Math.random() * 3).toFixed(2)}%`,
+                        vol: `${(Math.random() * 100).toFixed(1)}M`,
+                        high: "155.20",
+                        low: "138.40"
+                    });
+                    renderChart();
+                    setIsLoading(false);
+                }, 800);
+                return () => clearTimeout(timer);
+            }, [activeTicker]);
 
-                    chartInstance.current = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: history.labels,
-                            datasets: [{
-                                data: history.prices,
-                                borderColor: '#3b82f6',
-                                borderWidth: 3,
-                                fill: true,
-                                backgroundColor: gradient,
-                                tension: 0.4,
-                                pointRadius: 0,
-                                pointHoverRadius: 5
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: { 
-                                legend: { display: false },
-                                tooltip: {
-                                    mode: 'index',
-                                    intersect: false,
-                                    backgroundColor: '#0f172a',
-                                    titleFont: { size: 10 },
-                                    bodyFont: { size: 12, weight: 'bold' }
-                                }
-                            },
-                            scales: {
-                                x: { display: false },
-                                y: { 
-                                    position: 'right', 
-                                    grid: { color: 'rgba(255,255,255,0.03)' },
-                                    ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } }
-                                }
+            const renderChart = () => {
+                if (!chartRef.current) return;
+                if (chartInstance.current) chartInstance.current.destroy();
+
+                const ctx = chartRef.current.getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+                gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+
+                const dummyLabels = Array.from({length: 30}, (_, i) => `${i+1} Feb`);
+                const dummyPrices = Array.from({length: 30}, () => 100 + Math.random() * 50);
+
+                chartInstance.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: dummyLabels,
+                        datasets: [{
+                            label: activeTicker,
+                            data: dummyPrices,
+                            borderColor: '#3b82f6',
+                            borderWidth: 3,
+                            fill: true,
+                            backgroundColor: gradient,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            pointHoverBackgroundColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { display: false },
+                            y: { 
+                                position: 'right',
+                                grid: { color: 'rgba(255,255,255,0.03)' },
+                                ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }
                             }
                         }
-                    });
-                }
-            }, [history]);
+                    }
+                });
+            };
 
             return (
-                <div className="app-grid">
-                    {/* --- HEADER --- */}
-                    <div className="col-span-3 glass-card flex items-center justify-between px-6">
+                <div className="dashboard-grid">
+                    {/* Header */}
+                    <header className="col-span-3 card flex-row items-center justify-between px-6 bg-[#080c14]">
                         <div className="flex items-center gap-10">
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-black text-white italic">Q</div>
-                                <span className="font-black text-xl tracking-tighter bg-gradient-to-r from-white to-slate-500 bg-clip-text text-transparent">QUANTA PRO</span>
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg glow-blue italic text-xl">Q</div>
+                                <span className="text-xl font-extrabold tracking-tighter bg-gradient-to-r from-white to-slate-500 bg-clip-text text-transparent">QUANTA PRO</span>
                             </div>
-                            <nav className="flex gap-6 text-[10px] font-bold text-slate-500 tracking-widest uppercase">
-                                <span className="text-blue-500 border-b-2 border-blue-500 pb-1 cursor-pointer">Terminal</span>
-                                <span className="hover:text-white cursor-pointer transition-colors">Analyzer</span>
-                                <span className="hover:text-white cursor-pointer transition-colors">Portfolio</span>
-                                <span className="hover:text-white cursor-pointer transition-colors">Algo-Trading</span>
+                            <nav className="flex gap-6 text-[10px] font-bold text-slate-500 tracking-[0.2em] uppercase">
+                                <span className="text-blue-500 cursor-pointer">Terminal</span>
+                                <span className="hover:text-white transition-colors cursor-pointer">Portfolio</span>
+                                <span className="hover:text-white transition-colors cursor-pointer">News</span>
+                                <span className="hover:text-white transition-colors cursor-pointer">AI Signals</span>
                             </nav>
                         </div>
                         <div className="flex items-center gap-6">
-                            <div className="flex items-center gap-3">
-                                <div className="pulse-dot"></div>
-                                <span className="hebrew-ui text-[11px] font-bold text-emerald-400">שרת פעיל: תל אביב</span>
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg glow-green animate-pulse"></div>
+                                <span className="hebrew text-[11px] font-bold text-emerald-500">מחובר בזמן אמת</span>
                             </div>
-                            <div className="h-4 w-[1px] bg-slate-800"></div>
-                            <span className="mono text-[11px] text-slate-400">14:58:22 GMT+2</span>
+                            <div className="h-4 w-[1px] bg-white/10"></div>
+                            <div className="mono text-[11px] text-slate-400">MARKET OPEN</div>
                         </div>
-                    </div>
+                    </header>
 
-                    {/* --- LEFT: WATCHLIST & SIGNALS --- */}
-                    <aside className="flex flex-col gap-3">
-                        <div className="glass-card p-3">
-                            <input 
-                                className="w-full bg-slate-900/50 border border-white/5 rounded-lg px-4 py-2 text-xs mono outline-none focus:border-blue-500/50 transition-all"
-                                placeholder="Search Ticker..."
-                                onKeyDown={e => e.key === 'Enter' && setTicker(e.target.value.toUpperCase())}
-                            />
+                    {/* Sidebar */}
+                    <aside className="card p-2 gap-2">
+                        <div className="p-2">
+                            <input className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-xs mono outline-none focus:border-blue-500 transition-all" placeholder="SEARCH TICKER..." />
                         </div>
-                        <div className="glass-card flex-1 flex flex-col p-2">
-                            <div className="px-3 py-2 flex justify-between items-center border-b border-white/5 mb-2">
-                                <span className="hebrew-ui text-[10px] font-bold text-slate-500">רשימת מעקב</span>
-                                <span className="text-[10px] mono text-blue-500">8 Assets</span>
-                            </div>
-                            <div className="flex-1 overflow-y-auto custom-scroll pr-1">
-                                {[
-                                    {s: 'NVDA', p: '+2.4%'}, {s: 'AAPL', p: '-0.8%'}, 
-                                    {s: 'TSLA', p: '+1.1%'}, {s: 'BTC', p: '+4.2%'},
-                                    {s: 'MSFT', p: '+0.5%'}, {s: 'GOOGL', p: '-1.2%'},
-                                    {s: 'AMD', p: '+3.1%'}, {s: 'SPY', p: '+0.2%'}
-                                ].map(item => (
-                                    <div 
-                                        key={item.s} 
-                                        onClick={() => setTicker(item.s)}
-                                        className={`ticker-highlight flex justify-between items-center p-3 rounded-lg mb-1 cursor-pointer ${ticker === item.s ? 'active' : 'hover:bg-white/5'}`}
-                                    >
-                                        <div>
-                                            <div className="font-bold mono text-sm">{item.s}</div>
-                                            <div className="text-[9px] text-slate-500 uppercase">Nasdaq 100</div>
-                                        </div>
-                                        <div className={`text-xs mono font-bold ${item.p.startsWith('+') ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {item.p}
-                                        </div>
+                        <div className="flex-1 overflow-y-auto custom-scroll px-1">
+                            <h3 className="hebrew text-[10px] text-slate-500 font-bold mb-3 px-2">רשימת מעקב</h3>
+                            {['NVDA', 'AAPL', 'TSLA', 'BTC', 'ETH', 'MSFT', 'AMD', 'SPY'].map(t => (
+                                <div key={t} onClick={() => setActiveTicker(t)} className={`sidebar-item flex justify-between items-center p-3 rounded-lg mb-1 ${activeTicker === t ? 'active' : 'hover:bg-white/5 text-slate-400'}`}>
+                                    <div>
+                                        <div className="font-bold mono text-sm">{t}</div>
+                                        <div className="text-[9px] opacity-50 uppercase">Nasdaq 100</div>
                                     </div>
-                                ))}
-                            </div>
+                                    <div className="text-right">
+                                        <div className="text-xs mono font-bold text-emerald-400">+{(Math.random()*3).toFixed(2)}%</div>
+                                        <div className="text-[10px] mono opacity-40">Live</div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </aside>
 
-                    {/* --- CENTER: MAIN CHART & ANALYTICS --- */}
-                    <main className="flex flex-col gap-3">
-                        {/* Price Banner */}
-                        <div className="glass-card p-6 flex justify-between items-end bg-gradient-to-br from-slate-900 to-slate-950">
-                            <div className="flex gap-10">
+                    {/* Main Content */}
+                    <main className="flex flex-col gap-3 min-w-0">
+                        {/* Summary Bar */}
+                        <div className="card p-6 flex flex-row justify-between items-end bg-gradient-to-br from-slate-900 to-black">
+                            <div className="flex gap-12 items-center">
                                 <div>
-                                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-2 tracking-widest">Global Asset</div>
-                                    <h2 className="text-5xl font-black mono tracking-tighter">{ticker}</h2>
-                                    <div className="hebrew-ui text-[11px] text-blue-400 mt-1">נכס מאושר למסחר אלגוריתמי</div>
+                                    <span className="text-[10px] text-slate-500 font-bold uppercase mb-1 block">Ticker</span>
+                                    <h1 className="text-5xl font-extrabold tracking-tighter mono">{activeTicker}</h1>
                                 </div>
-                                <div className="h-16 w-[1px] bg-white/5"></div>
+                                <div className="h-14 w-[1px] bg-white/10"></div>
                                 <div>
-                                    <div className="hebrew-ui text-[10px] text-slate-500 font-bold mb-2 uppercase tracking-widest">מחיר שוק נוכחי</div>
+                                    <span className="hebrew text-[10px] text-slate-500 font-bold mb-1 block">מחיר שוק</span>
                                     <div className="flex items-baseline gap-3">
-                                        <span className="text-5xl font-bold mono tracking-tight text-white">${data.price}</span>
-                                        <span className={`text-lg mono font-bold ${parseFloat(data.change) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {parseFloat(data.change) >= 0 ? '▲' : '▼'} {data.percent}
+                                        <span className="text-5xl font-bold mono">${tickerData.price}</span>
+                                        <span className={`text-xl font-bold mono ${tickerData.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {tickerData.change >= 0 ? '▲' : '▼'} {tickerData.pct}
                                         </span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="hidden lg:flex gap-6 pb-1">
+                            <div className="flex gap-8 pb-1">
                                 <div className="text-right">
-                                    <div className="hebrew-ui text-[9px] text-slate-500 font-bold mb-1">גבוה יומי</div>
-                                    <div className="mono text-sm text-slate-300">${data.high}</div>
+                                    <span className="hebrew text-[9px] text-slate-500 font-bold block uppercase">גבוה יומי</span>
+                                    <span className="mono text-sm">${tickerData.high}</span>
                                 </div>
                                 <div className="text-right">
-                                    <div className="hebrew-ui text-[9px] text-slate-500 font-bold mb-1">נמוך יומי</div>
-                                    <div className="mono text-sm text-slate-300">${data.low}</div>
+                                    <span className="hebrew text-[9px] text-slate-500 font-bold block uppercase">נמוך יומי</span>
+                                    <span className="mono text-sm">${tickerData.low}</span>
+                                </div>
+                                <div className="text-right">
+                                    <span className="hebrew text-[9px] text-slate-500 font-bold block uppercase">מחזור</span>
+                                    <span className="mono text-sm text-blue-400">{tickerData.vol}</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Chart Area */}
-                        <div className="glass-card flex-1 p-6 flex flex-col min-h-0 relative">
+                        {/* Chart Card */}
+                        <div className="card flex-1 p-6 flex flex-col relative min-h-0">
                             <div className="flex justify-between items-center mb-6 z-10">
                                 <div className="flex p-1 bg-black/40 rounded-lg border border-white/5">
-                                    {['1D', '1W', '1M', '1Y', '5Y'].map(t => (
-                                        <button key={t} className={`px-4 py-1 text-[10px] font-black rounded-md transition-all ${t === '1M' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{t}</button>
+                                    {['1H', '1D', '1W', '1M', '1Y'].map(t => (
+                                        <button key={t} className={`px-4 py-1 text-[10px] font-bold rounded-md transition-all ${t === '1D' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{t}</button>
                                     ))}
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <div className="hebrew-ui bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded text-[10px] font-bold border border-emerald-500/20">
-                                        סיגנל: קנייה חזקה
+                                    <div className="hebrew px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded text-[10px] font-bold">
+                                        המלצת AI: קנייה חזקה
                                     </div>
-                                    <div className="flex gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                        <div className="w-2 h-2 rounded-full bg-slate-700"></div>
+                                    <div className="flex gap-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-700"></div>
                                     </div>
                                 </div>
                             </div>
-                            <div className="chart-container">
-                                {loading && <div className="absolute inset-0 z-20 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center font-bold text-blue-500">SYNCING MARKET DATA...</div>}
+                            <div className="chart-wrapper">
+                                {isLoading && <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-20 flex items-center justify-center font-bold text-blue-500 uppercase tracking-widest">Updating Market Data...</div>}
                                 <canvas ref={chartRef}></canvas>
                             </div>
                         </div>
                     </main>
 
-                    {/* --- RIGHT: NEWS & EXECUTION --- */}
+                    {/* Right: Insights & Trade */}
                     <aside className="flex flex-col gap-3">
-                        {/* Trade Execution */}
-                        <div className="glass-card p-6 bg-gradient-to-b from-slate-900/50 to-transparent">
-                            <h3 className="hebrew-ui text-[11px] font-black text-slate-400 mb-5 tracking-widest uppercase">ביצוע פקודת מסחר</h3>
-                            <div className="space-y-5">
-                                <div className="grid grid-cols-2 gap-2 p-1 bg-black/40 rounded-xl border border-white/5">
-                                    <button className="py-3 text-[10px] font-black uppercase bg-emerald-600 rounded-lg text-white shadow-xl shadow-emerald-950/20">Buy</button>
-                                    <button className="py-3 text-[10px] font-black uppercase text-slate-500 hover:text-white">Sell</button>
+                        {/* Execution Card */}
+                        <div className="card p-6 bg-gradient-to-b from-slate-900/50 to-transparent">
+                            <h3 className="hebrew text-[11px] font-bold text-slate-400 mb-5 uppercase tracking-widest">ביצוע הוראה</h3>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-black/20 rounded-xl border border-white/5">
+                                    <button className="py-3 text-[10px] font-bold uppercase bg-emerald-600 text-white rounded-lg shadow-lg">Buy</button>
+                                    <button className="py-3 text-[10px] font-bold uppercase text-slate-500 hover:text-white">Sell</button>
                                 </div>
-                                <div>
-                                    <div className="flex justify-between mb-2">
-                                        <label className="hebrew-ui text-[10px] text-slate-500 font-bold uppercase">כמות מניות</label>
-                                        <span className="mono text-[10px] text-blue-500 font-bold">Max: 1,420</span>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between">
+                                        <label className="hebrew text-[10px] text-slate-500 font-bold uppercase">כמות מניות</label>
+                                        <span className="mono text-[10px] text-blue-500">BP: $24,500</span>
                                     </div>
-                                    <input type="number" defaultValue="10" className="w-full bg-slate-950 border border-white/10 rounded-xl p-4 text-2xl mono font-black outline-none focus:border-blue-500 shadow-inner" />
+                                    <input type="number" defaultValue="10" className="w-full bg-slate-950 border border-white/10 rounded-xl p-4 text-3xl mono font-bold outline-none focus:border-blue-500 shadow-inner" />
                                 </div>
-                                <div className="p-4 bg-blue-500/5 rounded-xl border border-blue-500/10 space-y-3">
+                                <div className="p-4 bg-blue-500/5 rounded-xl border border-white/5 space-y-2">
                                     <div className="flex justify-between text-[11px]">
-                                        <span className="hebrew-ui text-slate-500 font-bold">שווי עסקה:</span>
-                                        <span className="mono text-white font-bold">${(10 * parseFloat(data.price || 0)).toLocaleString()}</span>
+                                        <span className="hebrew text-slate-500">סה"כ לתשלום:</span>
+                                        <span className="mono text-white font-bold">${(10 * tickerData.price).toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between text-[11px]">
-                                        <span className="hebrew-ui text-slate-500 font-bold">ביטחונות נדרשים:</span>
-                                        <span className="mono text-emerald-400 font-bold">$0.00 (Margin)</span>
+                                        <span className="hebrew text-slate-500">עמלת מסחר:</span>
+                                        <span className="mono text-emerald-400">$0.00</span>
                                     </div>
                                 </div>
-                                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-xl text-xs uppercase tracking-[0.3em] shadow-2xl shadow-blue-900/40 transition-all transform hover:-translate-y-1">
-                                    Confirm Trade
+                                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-xl text-xs uppercase tracking-widest transition-all transform hover:scale-[1.02] shadow-xl shadow-blue-900/20">
+                                    Confirm Execute
                                 </button>
                             </div>
                         </div>
 
-                        {/* Market News Feed */}
-                        <div className="glass-card flex-1 flex flex-col p-5">
+                        {/* AI Insights Card */}
+                        <div className="card flex-1 p-5">
                             <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-2">
-                                <h3 className="hebrew-ui text-[11px] font-black text-slate-400 tracking-widest uppercase">חדשות ואירועים</h3>
+                                <h3 className="hebrew text-[11px] font-bold text-slate-400 uppercase tracking-widest">חדשות ותובנות AI</h3>
                                 <div className="w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
                             </div>
-                            <div className="space-y-5 overflow-y-auto custom-scroll pr-1">
-                                {[
-                                    {t: "הודעת הריבית של הפד צפויה הערב בשעה 21:00", time: "לפני 5 דק'"},
-                                    {t: `אנליסטים מעלים את מחיר היעד של ${ticker} ב-15%`, time: "לפני 22 דק'"},
-                                    {t: "דוח התעסוקה בארה\"ב היכה את התחזיות המוקדמות", time: "לפני שעה"},
-                                    {t: "מגזר השבבים מוביל את העליות בוול סטריט", time: "לפני שעתיים"}
-                                ].map((news, i) => (
-                                    <div key={i} className="group cursor-pointer">
-                                        <p className="hebrew-ui text-[12px] text-slate-300 leading-snug font-bold group-hover:text-blue-400 transition-colors">
-                                            {news.t}
-                                        </p>
-                                        <span className="hebrew-ui text-[9px] text-slate-600 mt-1 block">{news.time}</span>
-                                    </div>
-                                ))}
+                            <div className="flex-1 overflow-y-auto custom-scroll pr-2 space-y-4">
+                                {/* Signals */}
+                                <div className="space-y-2">
+                                    {aiInsights.map((insight, idx) => (
+                                        <div key={idx} className="p-3 bg-white/5 rounded-lg border-l-2 border-blue-500 hover:bg-white/10 transition-colors cursor-default">
+                                            <div className="flex justify-between mb-1">
+                                                <span className="hebrew text-[9px] font-bold text-blue-400 uppercase">{insight.category}</span>
+                                                <span className={`text-[9px] font-bold mono ${insight.type === 'BUY' ? 'text-emerald-400' : insight.type === 'SELL' ? 'text-rose-400' : 'text-slate-400'}`}>{insight.type}</span>
+                                            </div>
+                                            <p className="hebrew text-xs text-slate-200 leading-relaxed">{insight.text}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="h-[1px] bg-white/5"></div>
+                                {/* News */}
+                                <div className="space-y-4 pt-1">
+                                    {newsItems.map((news, i) => (
+                                        <div key={i} className="group cursor-pointer">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="hebrew text-[8px] px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded uppercase font-bold">{news.tag}</span>
+                                                <span className="hebrew text-[9px] text-slate-600">{news.time}</span>
+                                            </div>
+                                            <p className="hebrew text-[11px] text-slate-400 group-hover:text-blue-400 transition-colors leading-snug font-bold">{news.title}</p>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </aside>
 
-                    {/* --- FOOTER --- */}
-                    <footer className="col-span-3 flex items-center justify-between px-4 text-[9px] font-bold text-slate-600 uppercase tracking-[0.3em] border-t border-white/5 bg-[#010204]">
-                        <div className="flex gap-8">
-                            <span className="text-blue-600 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-blue-600 rounded-full"></span> 
-                                Data: AlphaVantage Realtime
-                            </span>
-                            <span>System: Stable</span>
-                            <span>Latency: 18ms</span>
+                    {/* Footer */}
+                    <footer className="col-span-3 flex items-center justify-between px-4 text-[9px] font-bold text-slate-600 uppercase tracking-widest border-t border-white/5">
+                        <div className="flex gap-6">
+                            <span>Status: Operational</span>
+                            <span>Region: Israel-Central</span>
+                            <span className="text-blue-500">API: Connected (v2.1)</span>
                         </div>
-                        <div className="hebrew-ui text-slate-700 opacity-50 font-bold">
-                            טרמינל מסחר מקצועי © Quanta AI Systems 2024
+                        <div className="hebrew text-slate-700 opacity-60">
+                            מערכת מסחר קוואנטה • כל הזכויות שמורות 2024
                         </div>
                     </footer>
                 </div>
