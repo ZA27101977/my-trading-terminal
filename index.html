@@ -3,79 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUANTA.AI | Multi-Timeframe Terminal</title>
+    <title>QUANTA PRO | Real-Time AI Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Assistant:wght@300;400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Assistant:wght@300;400;600;700&display=swap');
         
         :root {
-            --bg-main: #06090f;
+            --bg-main: #020408;
             --bg-card: #0d1117;
-            --border-color: rgba(255, 255, 255, 0.08);
-            --accent-blue: #2563eb;
+            --accent-blue: #3b82f6;
+            --border: rgba(255, 255, 255, 0.08);
         }
 
         body {
             background-color: var(--bg-main);
-            color: #ffffff;
+            color: #e6edf3;
             font-family: 'Inter', sans-serif;
             margin: 0;
-            height: 100vh;
             overflow: hidden;
         }
 
         .hebrew { font-family: 'Assistant', sans-serif; direction: rtl; }
         
-        .main-layout {
+        .main-grid {
             display: grid;
-            grid-template-columns: 1fr 340px;
-            grid-template-rows: 60px 100px 1fr 40px;
+            grid-template-columns: 1fr 320px;
+            grid-template-rows: 64px 80px 1fr 32px;
             height: 100vh;
-            gap: 1px;
-            background: var(--border-color);
         }
 
-        .panel { background: var(--bg-main); padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
-        .header-panel { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding: 0 24px; }
-        .portfolio-summary { grid-column: 1 / 2; display: flex; gap: 40px; align-items: center; background: #0a0d14; padding: 0 32px; border-bottom: 1px solid var(--border-color); }
-        .watchlist-panel { grid-row: 2 / 4; grid-column: 2; border-left: 1px solid var(--border-color); }
-        .chart-panel { grid-row: 3 / 4; grid-column: 1; position: relative; }
+        .panel { border: 1px solid var(--border); background: var(--bg-main); overflow: hidden; }
+        .header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: #0d1117; }
+        .ticker-bar { grid-column: 1 / 2; display: flex; align-items: center; gap: 32px; padding: 0 24px; background: #06090f; }
+        .watchlist { grid-row: 2 / 4; grid-column: 2; border-left: 2px solid var(--border); }
+        .chart-area { grid-row: 3 / 4; grid-column: 1; position: relative; }
         
-        .stat-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.05em; }
-        .stat-value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .btn-tf {
+            padding: 4px 12px; font-size: 11px; font-weight: 700; border-radius: 4px;
+            color: #8b949e; transition: 0.2s;
+        }
+        .btn-tf.active { background: var(--accent-blue); color: white; }
 
-        .ai-status-pulse { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981; }
-        
-        .watchlist-item {
-            display: grid; grid-template-columns: 1fr 80px 70px;
-            padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.03);
-            cursor: pointer; transition: all 0.2s;
+        .ai-card {
+            position: absolute; bottom: 24px; left: 24px; right: 24px;
+            background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(12px);
+            border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 16px;
+            padding: 20px; z-index: 50; display: flex; justify-content: space-between; align-items: center;
         }
-        .watchlist-item:hover { background: rgba(255,255,255,0.05); }
-        .active-row { background: rgba(37, 99, 235, 0.1); border-right: 3px solid var(--accent-blue); }
 
-        .loader-ring {
-            width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1);
-            border-top: 3px solid var(--accent-blue); border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        .timeframe-btn {
-            padding: 4px 10px;
-            font-size: 10px;
-            font-weight: 800;
-            border-radius: 4px;
-            transition: all 0.2s;
-            color: #64748b;
-        }
-        .timeframe-btn.active {
-            background: var(--accent-blue);
-            color: white;
+        .status-overlay {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(13, 17, 23, 0.8); border: 1px solid var(--border);
+            padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: bold;
+            z-index: 40; display: flex; align-items: center; gap: 6px;
         }
     </style>
 </head>
@@ -89,89 +73,134 @@
         const API_KEY_GEMINI = ""; 
 
         const TIMEFRAMES = [
-            { id: '1D', label: '1D', func: 'TIME_SERIES_INTRADAY', interval: '5min' },
-            { id: '1W', label: '1W', func: 'TIME_SERIES_DAILY', limit: 7 },
-            { id: '1M', label: '1M', func: 'TIME_SERIES_DAILY', limit: 30 },
-            { id: '1Y', label: '1Y', func: 'TIME_SERIES_WEEKLY', limit: 52 },
-            { id: 'ALL', label: 'ALL', func: 'TIME_SERIES_MONTHLY' }
+            { id: '1D', func: 'TIME_SERIES_INTRADAY', interval: '5min', label: '1 יום' },
+            { id: '1W', func: 'TIME_SERIES_DAILY', limit: 7, label: '1 שבוע' },
+            { id: '1M', func: 'TIME_SERIES_DAILY', limit: 30, label: '1 חודש' },
+            { id: '1Y', func: 'TIME_SERIES_WEEKLY', limit: 52, label: '1 שנה' }
         ];
 
         const App = () => {
-            const [ticker, setTicker] = useState('SPY');
-            const [timeframe, setTimeframe] = useState(TIMEFRAMES[0]);
-            const [priceData, setPriceData] = useState({ price: '0.00', change: '0.00', pct: '0.00' });
-            const [aiAnalysis, setAiAnalysis] = useState(null);
+            const [ticker, setTicker] = useState('NVDA');
+            const [tf, setTf] = useState(TIMEFRAMES[0]);
+            const [data, setData] = useState({ price: '0.00', change: '0.00', pct: '0.00%' });
+            const [aiResponse, setAiResponse] = useState(null);
             const [loading, setLoading] = useState(false);
-            const chartContainerRef = useRef(null);
-            const chartInstance = useRef(null);
+            const [usingMock, setUsingMock] = useState(false);
+            
+            const chartRef = useRef(null);
             const seriesRef = useRef(null);
+            const chartInstance = useRef(null);
+            const abortControllerRef = useRef(null);
 
-            const [watchlist] = useState([
-                { symbol: 'SPY', name: 'S&P 500' },
-                { symbol: 'QQQ', name: 'Nasdaq 100' },
-                { symbol: 'NVDA', name: 'Nvidia' },
-                { symbol: 'AAPL', name: 'Apple' },
-                { symbol: 'TSLA', name: 'Tesla' },
-                { symbol: 'BTCUSD', name: 'Bitcoin' }
-            ]);
-
-            const fetchStockHistory = useCallback(async (symbol, tf) => {
-                setLoading(true);
-                try {
-                    let url = `https://www.alphavantage.co/query?function=${tf.func}&symbol=${symbol}&apikey=${API_KEY_STOCK}`;
-                    if (tf.interval) url += `&interval=${tf.interval}`;
+            const generateMockData = (timeframe, count = 150) => {
+                const mock = [];
+                let p = 150 + Math.random() * 100;
+                let now = new Date();
+                for (let i = 0; i < count; i++) {
+                    const volatility = p * 0.01;
+                    const open = p + (Math.random() - 0.5) * volatility;
+                    const close = open + (Math.random() - 0.5) * volatility;
+                    const high = Math.max(open, close) + Math.random() * (volatility * 0.5);
+                    const low = Math.min(open, close) - Math.random() * (volatility * 0.5);
                     
-                    const res = await fetch(url);
-                    const data = await res.json();
-                    
-                    let timeSeriesKey = "";
-                    if (tf.id === '1D') timeSeriesKey = "Time Series (5min)";
-                    else if (tf.id === '1W' || tf.id === '1M') timeSeriesKey = "Time Series (Daily)";
-                    else if (tf.id === '1Y') timeSeriesKey = "Weekly Time Series";
-                    else timeSeriesKey = "Monthly Time Series";
-
-                    const seriesData = data[timeSeriesKey];
-                    if (seriesData) {
-                        const formattedData = Object.entries(seriesData).map(([time, values]) => {
-                            // עבור תוך-יומי (1D) Lightweight Charts צריך Unix Timestamp או פורמט מתאים
-                            const isIntraday = time.includes(':');
-                            return {
-                                time: isIntraday ? Math.floor(new Date(time).getTime() / 1000) : time,
-                                open: parseFloat(values["1. open"]),
-                                high: parseFloat(values["2. high"]),
-                                low: parseFloat(values["3. low"]),
-                                close: parseFloat(values["4. close"]),
-                            };
-                        }).reverse();
-
-                        // הגבלת כמות נתונים לפי הטווח אם צריך
-                        const finalData = tf.limit ? formattedData.slice(-tf.limit) : formattedData;
-                        seriesRef.current.setData(finalData);
-                        chartInstance.current.timeScale().fitContent();
-
-                        // עדכון מחיר נוכחי מהנר האחרון
-                        const lastBar = finalData[finalData.length - 1];
-                        const prevBar = finalData[finalData.length - 2];
-                        const change = (lastBar.close - prevBar.close).toFixed(2);
-                        const pct = ((change / prevBar.close) * 100).toFixed(2);
-                        
-                        setPriceData({
-                            price: lastBar.close.toFixed(2),
-                            change: change,
-                            pct: (change >= 0 ? '+' : '') + pct + '%'
-                        });
-
-                        runAIAnalysis(symbol, { price: lastBar.close, pct: pct + '%' });
+                    let time;
+                    if (timeframe.id === '1D') {
+                        time = Math.floor(now.getTime() / 1000) - (count - i) * 300;
+                    } else {
+                        const d = new Date(now);
+                        d.setDate(d.getDate() - (count - i));
+                        time = d.toISOString().split('T')[0];
                     }
-                } catch (e) {
-                    console.error("Failed to fetch history", e);
+
+                    mock.push({ time, open, high, low, close });
+                    p = close;
+                }
+                return mock;
+            };
+
+            const fetchMarketData = useCallback(async (symbol, timeframe) => {
+                if (abortControllerRef.current) abortControllerRef.current.abort();
+                abortControllerRef.current = new AbortController();
+                
+                setLoading(true);
+                setUsingMock(false);
+
+                try {
+                    let url = `https://www.alphavantage.co/query?function=${timeframe.func}&symbol=${symbol}&apikey=${API_KEY_STOCK}`;
+                    if (timeframe.id === '1D') url += `&interval=${timeframe.interval}`;
+
+                    const res = await fetch(url, { signal: abortControllerRef.current.signal });
+                    const raw = await res.json();
+                    
+                    // בדיקת מגבלה בשקט
+                    if (raw["Note"] || raw["Information"] || !raw[Object.keys(raw).find(k => k.includes("Series"))]) {
+                        console.log("Switching to simulation mode due to API limits.");
+                        handleFallback(timeframe);
+                        return;
+                    }
+
+                    const keyMap = {
+                        '1D': "Time Series (5min)",
+                        '1W': "Time Series (Daily)",
+                        '1M': "Time Series (Daily)",
+                        '1Y': "Weekly Time Series"
+                    };
+
+                    const timeSeries = raw[keyMap[timeframe.id]];
+                    if (!timeSeries) {
+                        handleFallback(timeframe);
+                        return;
+                    }
+
+                    const formatted = Object.entries(timeSeries).map(([time, v]) => ({
+                        time: timeframe.id === '1D' ? Math.floor(new Date(time).getTime() / 1000) : time,
+                        open: parseFloat(v["1. open"]),
+                        high: parseFloat(v["2. high"]),
+                        low: parseFloat(v["3. low"]),
+                        close: parseFloat(v["4. close"]),
+                    })).reverse();
+
+                    const finalData = timeframe.limit ? formatted.slice(-timeframe.limit) : formatted;
+                    seriesRef.current.setData(finalData);
+                    chartInstance.current.timeScale().fitContent();
+
+                    const latest = finalData[finalData.length - 1];
+                    const prev = finalData[finalData.length - 2] || latest;
+                    const diff = (latest.close - prev.close).toFixed(2);
+                    const pct = ((diff / prev.close) * 100).toFixed(2);
+
+                    setData({
+                        price: latest.close.toFixed(2),
+                        change: diff,
+                        pct: (diff >= 0 ? '+' : '') + pct + '%'
+                    });
+
+                    askGemini(symbol, latest.close, pct);
+
+                } catch (err) {
+                    if (err.name === 'AbortError') return;
+                    handleFallback(timeframe);
                 } finally {
                     setLoading(false);
                 }
             }, []);
 
-            const runAIAnalysis = async (symbol, currentPrice) => {
-                const prompt = `אנליסט AI. נתח ${symbol} מחיר ${currentPrice.price} שינוי ${currentPrice.pct}. המלצה קצרה בעברית וציון 0-100. JSON: {"rec": "...", "score": 85, "reason": "..."}`;
+            const handleFallback = (timeframe) => {
+                setUsingMock(true);
+                const mock = generateMockData(timeframe);
+                seriesRef.current.setData(mock);
+                chartInstance.current.timeScale().fitContent();
+                
+                const latest = mock[mock.length-1];
+                setData({ 
+                    price: latest.close.toFixed(2), 
+                    change: (latest.close - latest.open).toFixed(2), 
+                    pct: 'Simulated' 
+                });
+            };
+
+            const askGemini = async (symbol, price, pct) => {
+                const prompt = `Analyze ${symbol} at $${price} (${pct}%). Return JSON: {"rec": "BUY/SELL/HOLD", "score": 0-100, "insight": "Hebrew text"}`;
                 try {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY_GEMINI}`, {
                         method: 'POST',
@@ -181,138 +210,141 @@
                             generationConfig: { responseMimeType: "application/json" }
                         })
                     });
-                    const data = await res.json();
-                    const analysis = JSON.parse(data.candidates[0].content.parts[0].text);
-                    setAiAnalysis(analysis);
-                } catch (e) { console.error(e); }
+                    const result = await res.json();
+                    setAiResponse(JSON.parse(result.candidates[0].content.parts[0].text));
+                } catch (e) {
+                    setAiResponse({ rec: "HOLD", score: 50, insight: "מנתח נתונים זמניים מהשוק..." });
+                }
             };
 
             useEffect(() => {
-                const chart = LightweightCharts.createChart(chartContainerRef.current, {
-                    layout: { background: { color: '#06090f' }, textColor: '#94a3b8' },
+                const chart = LightweightCharts.createChart(chartRef.current, {
+                    layout: { background: { color: '#020408' }, textColor: '#8b949e' },
                     grid: { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
-                    timeScale: { borderColor: '#30363d', timeVisible: true },
                     rightPriceScale: { borderColor: '#30363d' },
+                    timeScale: { borderColor: '#30363d', timeVisible: true },
                 });
                 const candleSeries = chart.addCandlestickSeries({
-                    upColor: '#10b981', downColor: '#ef4444', borderVisible: false, wickUpColor: '#10b981', wickDownColor: '#ef4444',
+                    upColor: '#238636', downColor: '#da3633', borderVisible: false, wickUpColor: '#238636', wickDownColor: '#da3633'
                 });
+                
                 chartInstance.current = chart;
                 seriesRef.current = candleSeries;
-                
-                fetchStockHistory(ticker, timeframe);
 
-                const handleResize = () => chart.applyOptions({ width: chartContainerRef.current.clientWidth });
-                window.addEventListener('resize', handleResize);
-                return () => {
-                    window.removeEventListener('resize', handleResize);
-                    chart.remove();
+                fetchMarketData(ticker, tf);
+
+                const resize = () => {
+                    if (chartRef.current) chart.applyOptions({ width: chartRef.current.clientWidth });
                 };
+                window.addEventListener('resize', resize);
+                return () => { window.removeEventListener('resize', resize); chart.remove(); };
             }, []);
 
             useEffect(() => {
-                fetchStockHistory(ticker, timeframe);
-            }, [ticker, timeframe, fetchStockHistory]);
+                fetchMarketData(ticker, tf);
+            }, [ticker, tf]);
 
             return (
-                <div className="main-layout">
-                    <header className="header-panel bg-[#0d1117]">
-                        <div className="flex items-center gap-4">
-                            <span className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-                                <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-xs italic">Q</div>
-                                QUANTA.AI
-                            </span>
-                            <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-full">
-                                <div className="ai-status-pulse"></div>
-                                <span className="text-[10px] font-bold text-emerald-500 uppercase">AI Terminal Live</span>
-                            </div>
+                <div className="main-grid">
+                    <header className="header border-b border-white/5">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-blue-600 text-white p-1 rounded font-black text-sm">Q</div>
+                            <span className="text-lg font-extrabold tracking-tighter uppercase">Quanta Pro AI</span>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex gap-4 items-center">
                             <input 
-                                className="bg-[#161b22] border border-white/10 rounded-md px-4 py-1.5 text-xs w-48 focus:outline-none focus:border-blue-500 font-bold"
-                                placeholder="Search Symbol (e.g. NVDA)"
-                                onKeyDown={(e) => e.key === 'Enter' && setTicker(e.target.value.toUpperCase())}
+                                className="bg-[#161b22] border border-white/10 rounded-lg px-4 py-2 text-xs w-64 focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                                placeholder="Search Symbol (e.g. AAPL, NVDA, TSLA)"
+                                onKeyDown={e => e.key === 'Enter' && setTicker(e.target.value.toUpperCase())}
                             />
+                            <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-3 py-1.5 rounded-full">
+                                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                                AGENT LIVE
+                            </div>
                         </div>
                     </header>
 
-                    <section className="portfolio-summary">
+                    <div className="ticker-bar border-b border-white/5">
                         <div className="flex flex-col">
-                            <span className="stat-label hebrew">מניה</span>
-                            <span className="stat-value text-blue-500 font-black">{ticker}</span>
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Symbol</span>
+                            <span className="text-2xl font-black text-blue-500 leading-none">{ticker}</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="stat-label hebrew">מחיר (${timeframe.id})</span>
-                            <span className="stat-value font-mono">${priceData.price}</span>
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Price</span>
+                            <span className="text-2xl font-mono font-bold leading-none">${data.price}</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="stat-label hebrew">שינוי</span>
-                            <span className={`stat-value font-mono ${parseFloat(priceData.change) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                {priceData.change} ({priceData.pct})
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Change</span>
+                            <span className={`text-2xl font-mono font-bold leading-none ${parseFloat(data.change) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {data.change} ({data.pct})
                             </span>
                         </div>
-                        {loading && <div className="loader-ring"></div>}
-                    </section>
+                        {loading && <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>}
+                    </div>
 
-                    <aside className="watchlist-panel panel bg-[#0a0d14]">
-                        <h3 className="hebrew font-bold text-xs text-slate-500 mb-4 px-2 uppercase tracking-widest">רשימת מעקב</h3>
-                        <div className="flex-1 overflow-y-auto">
-                            {watchlist.map(item => (
+                    <aside className="watchlist bg-[#0d1117] p-4">
+                        <h4 className="hebrew text-xs font-bold text-slate-500 mb-4 uppercase tracking-widest">מניות במעקב</h4>
+                        <div className="space-y-1">
+                            {['SPY', 'QQQ', 'NVDA', 'TSLA', 'TEVA'].map(s => (
                                 <div 
-                                    key={item.symbol}
-                                    onClick={() => setTicker(item.symbol)}
-                                    className={`watchlist-item ${ticker === item.symbol ? 'active-row' : ''}`}
+                                    key={s} 
+                                    onClick={() => setTicker(s)}
+                                    className={`flex justify-between p-3 rounded-lg cursor-pointer transition-all ${ticker === s ? 'bg-blue-600/20 border border-blue-500/30' : 'hover:bg-white/5'}`}
                                 >
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-sm">{item.symbol}</span>
-                                        <span className="text-[9px] text-slate-500 uppercase">{item.name}</span>
-                                    </div>
-                                    <span className="text-right text-[10px] self-center text-slate-600">LIVE</span>
+                                    <span className="font-bold text-sm">{s}</span>
+                                    <span className="text-[10px] text-slate-500 self-center uppercase">Monitor</span>
                                 </div>
                             ))}
                         </div>
                     </aside>
 
-                    <main className="chart-panel panel p-0 border-t border-white/5">
-                        <div className="flex items-center justify-between p-4 bg-black/20 border-b border-white/5 z-20 relative">
-                            <div className="flex gap-1">
-                                {TIMEFRAMES.map(tf => (
-                                    <button 
-                                        key={tf.id} 
-                                        onClick={() => setTimeframe(tf)}
-                                        className={`timeframe-btn ${timeframe.id === tf.id ? 'active' : 'hover:bg-white/5'}`}
-                                    >
-                                        {tf.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="hebrew text-[10px] text-slate-500 font-bold uppercase">גרף היסטורי - {timeframe.label}</div>
+                    <main className="chart-area panel border-none">
+                        <div className="status-overlay text-[#8b949e] uppercase">
+                            <div className={`w-2 h-2 rounded-full ${usingMock ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                            {usingMock ? 'Simulation Mode' : 'Live Data'}
                         </div>
-
-                        <div className="flex-1" ref={chartContainerRef}></div>
                         
-                        <div className="absolute bottom-6 left-6 right-6 flex gap-4 z-10">
-                            <div className="flex-1 bg-blue-950/20 backdrop-blur-xl border border-blue-500/20 p-5 rounded-2xl flex justify-between items-center shadow-2xl">
-                                <div className="hebrew">
-                                    <div className="text-[10px] font-bold text-blue-400 mb-1 uppercase tracking-widest">תובנת AI - {ticker}</div>
-                                    <p className="text-sm font-medium text-slate-200">
-                                        {aiAnalysis ? aiAnalysis.reason : "מנתח נתוני שוק..."}
-                                    </p>
+                        <div className="absolute top-4 left-4 z-20 flex gap-2">
+                            {TIMEFRAMES.map(item => (
+                                <button 
+                                    key={item.id} 
+                                    onClick={() => setTf(item)}
+                                    className={`btn-tf hebrew ${tf.id === item.id ? 'active' : 'bg-[#161b22] hover:bg-[#30363d]'}`}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="w-full h-full" ref={chartRef}></div>
+
+                        <div className="ai-card shadow-2xl">
+                            <div className="hebrew flex-1">
+                                <div className="text-[10px] font-bold text-blue-400 mb-1 uppercase tracking-widest">תובנת AI - מנוע Gemini</div>
+                                <p className="text-sm font-semibold text-slate-200">
+                                    {aiResponse ? aiResponse.insight : "מנתח מגמות שוק בזמן אמת..."}
+                                </p>
+                            </div>
+                            <div className="flex gap-4 items-center mr-6 border-r border-white/10 pr-6">
+                                <div className="text-center">
+                                    <div className="text-[9px] font-bold text-slate-500 mb-1 uppercase">Score</div>
+                                    <div className="text-2xl font-black">{aiResponse?.score || '--'}</div>
                                 </div>
-                                <div className="text-center bg-blue-600 px-6 py-2 rounded-xl">
-                                    <div className="text-[10px] font-black uppercase mb-1">SCORE</div>
-                                    <div className="text-2xl font-black">{aiAnalysis ? aiAnalysis.score : '--'}</div>
+                                <div className={`px-6 py-2 rounded-xl text-lg font-black ${
+                                    aiResponse?.rec === 'BUY' ? 'bg-emerald-600' : 
+                                    aiResponse?.rec === 'SELL' ? 'bg-rose-600' : 'bg-blue-600'
+                                }`}>
+                                    {aiResponse?.rec || '...'}
                                 </div>
                             </div>
                         </div>
                     </main>
 
-                    <footer className="footer-panel bg-[#0d1117] text-[10px] text-slate-600 flex justify-between uppercase font-bold px-6 items-center">
-                        <div className="flex gap-6">
-                            <span>ALPHA VANTAGE REAL-TIME</span>
-                            <span>TF: {timeframe.func}</span>
+                    <footer className="col-span-2 bg-[#020408] border-t border-white/5 px-6 flex items-center justify-between text-[10px] text-slate-600 font-bold uppercase">
+                        <div className="flex gap-4">
+                            <span>Status: {usingMock ? 'Simulation' : 'Live'}</span>
+                            <span>Feed: Alpha Vantage API</span>
                         </div>
-                        <div className="hebrew">QUANTA TERMINAL • 2026</div>
+                        <div className="hebrew">© 2026 QUANTA AI TERMINAL</div>
                     </footer>
                 </div>
             );
