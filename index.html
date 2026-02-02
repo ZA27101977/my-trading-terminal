@@ -12,7 +12,6 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&family=Assistant:wght@400;700&display=swap');
         
-        /* הזרקה אגרסיבית של כיווניות שמאל-לימין */
         :root {
             direction: ltr !important;
         }
@@ -23,43 +22,49 @@
             height: 100vh;
             width: 100vw;
             overflow: hidden;
-            background-color: #05070a;
+            background-color: #020408;
             color: #e2e8f0;
             font-family: 'Inter', sans-serif;
             direction: ltr !important;
-            text-align: left !important;
+        }
+
+        /* Fix for forced RTL environments */
+        * {
+            box-sizing: border-box;
+            text-align: left;
         }
 
         .mono { font-family: 'JetBrains Mono', monospace !important; }
         
         .glass-panel {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
+            background: rgba(10, 15, 25, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
         }
 
-        /* הגדרת העברית כבועה מבודדת */
+        /* Hebrew container - completely isolated */
         .hebrew-zone {
             direction: rtl !important;
             text-align: right !important;
             font-family: 'Assistant', sans-serif;
-            unicode-bidi: isolate;
+            unicode-bidi: bidi-override !important;
         }
 
         .chart-container {
             position: relative;
             height: 100%;
             width: 100%;
+            min-height: 250px;
         }
 
-        /* ביטול השפעות של תרגום אוטומטי */
-        .notranslate {
-            translate: no !important;
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            opacity: 1;
         }
     </style>
 </head>
-<body class="notranslate">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -94,7 +99,10 @@
                     if (series) {
                         const allDates = Object.keys(series).sort();
                         const last60 = allDates.slice(-60);
-                        setHistory({ labels: last60, prices: last60.map(d => parseFloat(series[d]["4. close"])) });
+                        setHistory({ 
+                            labels: last60, 
+                            prices: last60.map(d => parseFloat(series[d]["4. close"])) 
+                        });
                     }
                 } catch (e) { console.error(e); } finally { setLoading(false); }
             }, []);
@@ -102,9 +110,10 @@
             useEffect(() => { fetchStockData(ticker); }, [ticker, fetchStockData]);
 
             useEffect(() => {
-                if (history.labels.length > 0 && chartRef.current) {
+                if (history.prices.length > 0 && chartRef.current) {
                     if (chartInstance.current) chartInstance.current.destroy();
                     const ctx = chartRef.current.getContext('2d');
+                    
                     chartInstance.current = new Chart(ctx, {
                         type: 'line',
                         data: {
@@ -112,9 +121,15 @@
                             datasets: [{
                                 data: history.prices,
                                 borderColor: '#3b82f6',
+                                borderWidth: 2,
                                 fill: true,
-                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                                tension: 0.2,
+                                backgroundColor: (context) => {
+                                    const gradient = context.chart.ctx.createLinearGradient(0, 0, 0, 400);
+                                    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
+                                    gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+                                    return gradient;
+                                },
+                                tension: 0.3,
                                 pointRadius: 0
                             }]
                         },
@@ -123,8 +138,12 @@
                             maintainAspectRatio: false,
                             plugins: { legend: { display: false } },
                             scales: {
-                                x: { ticks: { display: false }, grid: { display: false } },
-                                y: { position: 'right', grid: { color: '#1e293b' } }
+                                x: { display: false },
+                                y: { 
+                                    position: 'right', 
+                                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                    ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } }
+                                }
                             }
                         }
                     });
@@ -132,89 +151,151 @@
             }, [history]);
 
             return (
-                <div className="flex flex-col h-screen w-screen bg-[#05070a]">
-                    {/* Header */}
-                    <header className="h-14 border-b border-slate-800 flex items-center justify-between px-6 bg-[#0a0f1a]">
-                        <div className="flex items-center gap-8">
-                            <h1 className="text-blue-500 font-black text-2xl italic tracking-tighter">QUANTA.AI</h1>
-                            <div className="flex gap-4 text-[10px] font-bold text-slate-500">
-                                <span>TERMINAL</span>
+                <div className="flex flex-col h-screen w-screen bg-[#020408] overflow-hidden">
+                    {/* Top Bar */}
+                    <header className="h-12 border-b border-white/5 flex items-center justify-between px-6 bg-[#05070a] shrink-0">
+                        <div className="flex items-center gap-6">
+                            <h1 className="text-blue-500 font-black text-xl italic tracking-tighter">QUANTA.AI</h1>
+                            <div className="flex gap-4 text-[9px] font-bold text-slate-600 tracking-[0.2em]">
                                 <span>MARKETS</span>
+                                <span>PORTFOLIO</span>
+                                <span>ALGO-LAB</span>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
-                            <span className="text-emerald-500 text-[11px] font-bold hebrew-zone">שוק פעיל</span>
-                            <div className="w-8 h-8 rounded-full bg-slate-800"></div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span className="text-emerald-500 text-[10px] font-bold hebrew-zone">חיבור פעיל</span>
+                            </div>
+                            <div className="w-7 h-7 rounded bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-[10px] font-bold text-blue-400">JD</div>
                         </div>
                     </header>
 
-                    {/* Main Content */}
-                    <div className="flex flex-1 overflow-hidden p-4 gap-4">
-                        {/* Sidebar */}
-                        <aside className="w-64 flex flex-col gap-4">
-                            <div className="glass-panel p-3">
+                    {/* Main Layout */}
+                    <div className="flex flex-1 overflow-hidden p-3 gap-3">
+                        
+                        {/* Left: Watchlist */}
+                        <aside className="w-60 flex flex-col gap-3 shrink-0">
+                            <div className="glass-panel p-2">
                                 <input 
-                                    className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-sm mono uppercase outline-none focus:border-blue-500"
-                                    placeholder="TICKER..."
+                                    className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-xs mono uppercase outline-none focus:border-blue-500 transition-colors"
+                                    placeholder="SEARCH..."
                                     onKeyDown={e => e.key === 'Enter' && setTicker(e.target.value.toUpperCase())}
                                 />
                             </div>
-                            <div className="glass-panel flex-1 p-4 overflow-y-auto custom-scrollbar">
-                                <h3 className="hebrew-zone text-[10px] text-slate-500 mb-4">רשימת מעקב</h3>
-                                {['NVDA', 'AAPL', 'TSLA', 'SPY', 'QQQ'].map(s => (
-                                    <div key={s} onClick={() => setTicker(s)} className={`p-3 mb-2 rounded cursor-pointer mono ${ticker === s ? 'bg-blue-600' : 'hover:bg-white/5'}`}>
-                                        {s}
+                            <div className="glass-panel flex-1 overflow-y-auto custom-scrollbar p-2">
+                                <h3 className="hebrew-zone text-[9px] text-slate-500 mb-3 px-2 font-bold opacity-70">רשימת מעקב</h3>
+                                {['NVDA', 'AAPL', 'TSLA', 'SPY', 'QQQ', 'BTC', 'MSFT', 'AMD'].map(s => (
+                                    <div 
+                                        key={s} 
+                                        onClick={() => setTicker(s)} 
+                                        className={`flex justify-between items-center p-3 mb-1 rounded cursor-pointer transition-all ${ticker === s ? 'bg-blue-600 text-white' : 'hover:bg-white/5 text-slate-400'}`}
+                                    >
+                                        <span className="font-bold mono text-sm">{s}</span>
+                                        <span className="text-[10px] mono opacity-60">{(Math.random() * 2).toFixed(2)}%</span>
                                     </div>
                                 ))}
                             </div>
                         </aside>
 
-                        {/* Chart Area */}
-                        <main className="flex-1 flex flex-col gap-4">
-                            <div className="glass-panel p-6 flex justify-between items-center">
-                                <div>
-                                    <span className="text-[10px] text-slate-500 block uppercase">Instrument</span>
-                                    <h2 className="text-4xl font-black mono leading-none">{ticker}</h2>
+                        {/* Center: Analytics */}
+                        <main className="flex-1 flex flex-col gap-3 min-w-0">
+                            <div className="glass-panel p-5 flex justify-between items-center shrink-0">
+                                <div className="flex gap-8 items-center">
+                                    <div>
+                                        <div className="text-[9px] text-slate-500 uppercase font-bold mb-1">Ticker</div>
+                                        <h2 className="text-3xl font-black mono text-white leading-none">{ticker}</h2>
+                                    </div>
+                                    <div className="h-8 w-[1px] bg-white/10"></div>
+                                    <div>
+                                        <div className="text-[9px] text-slate-500 uppercase font-bold mb-1 hebrew-zone">מחיר שוק</div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-3xl font-bold mono text-white">${data?.price || '0.00'}</span>
+                                            <span className={`text-xs mono font-bold ${data?.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {data?.percent || '0%'}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-[10px] text-slate-500 block uppercase hebrew-zone">מחיר אחרון</span>
-                                    <span className="text-4xl font-bold mono">${data?.price || '0.00'}</span>
+                                <div className="hidden md:flex gap-6">
+                                    <div className="text-right">
+                                        <div className="text-[9px] text-slate-500 font-bold mb-1 hebrew-zone">מחזור מסחר</div>
+                                        <div className="text-sm mono text-slate-300">{(data?.vol / 1000000).toFixed(1)}M</div>
+                                    </div>
                                 </div>
                             </div>
+
                             <div className="glass-panel flex-1 p-6 flex flex-col min-h-0">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div className="flex gap-1">
+                                        {['1D', '1W', '1M', '1Y', 'ALL'].map(t => (
+                                            <button key={t} className="px-3 py-1 text-[9px] font-bold rounded bg-white/5 text-slate-500 hover:text-white transition-colors uppercase">{t}</button>
+                                        ))}
+                                    </div>
+                                    <span className="hebrew-zone text-[9px] text-blue-500 font-bold tracking-widest uppercase">ניתוח טרנד תקופתי</span>
+                                </div>
                                 <div className="chart-container">
                                     <canvas ref={chartRef}></canvas>
                                 </div>
                             </div>
                         </main>
 
-                        {/* Order Area */}
-                        <aside className="w-80 flex flex-col gap-4">
-                            <div className="glass-panel p-6">
-                                <h3 className="hebrew-zone text-[10px] text-slate-500 mb-4 uppercase">ביצוע פקודה</h3>
+                        {/* Right: Execution */}
+                        <aside className="w-72 flex flex-col gap-3 shrink-0">
+                            <div className="glass-panel p-5">
+                                <div className="flex gap-1 mb-6 bg-black/40 p-1 rounded">
+                                    <button className="flex-1 py-2 text-[9px] font-bold uppercase bg-blue-600 rounded text-white shadow-lg">Buy</button>
+                                    <button className="flex-1 py-2 text-[9px] font-bold uppercase text-slate-500 hover:text-white">Sell</button>
+                                </div>
+                                
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="hebrew-zone text-[10px] text-slate-500 block mb-1">כמות</label>
-                                        <input type="number" defaultValue="10" className="w-full bg-slate-900 border border-slate-800 rounded p-3 text-xl mono" />
+                                        <label className="hebrew-zone text-[9px] text-slate-500 font-bold block mb-1 uppercase">כמות מניות</label>
+                                        <input type="number" defaultValue="10" className="w-full bg-black/40 border border-white/10 rounded p-3 text-xl mono font-bold outline-none focus:border-blue-500" />
                                     </div>
-                                    <button className="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-xl font-bold uppercase tracking-widest transition-colors">Buy {ticker}</button>
-                                    <button className="w-full border border-red-500/50 text-red-500 py-3 rounded-xl font-bold text-xs uppercase hover:bg-red-500/10 transition-colors">Sell Short</button>
+                                    
+                                    <div className="p-3 bg-white/5 rounded border border-white/5 space-y-2">
+                                        <div className="flex justify-between text-[10px]">
+                                            <span className="hebrew-zone text-slate-500 font-bold">עלות משוערת:</span>
+                                            <span className="mono text-white">${(10 * (data?.price || 0)).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-[10px]">
+                                            <span className="hebrew-zone text-slate-500 font-bold">עמלה:</span>
+                                            <span className="mono text-emerald-400">$0.00</span>
+                                        </div>
+                                    </div>
+
+                                    <button className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded text-xs uppercase tracking-[0.2em] shadow-lg shadow-emerald-900/20 transition-all">
+                                        Execute Trade
+                                    </button>
                                 </div>
                             </div>
-                            <div className="glass-panel flex-1 p-6">
-                                <h3 className="hebrew-zone text-[10px] text-slate-500 mb-4 uppercase">תובנות AI</h3>
-                                <div className="space-y-4">
-                                    <p className="hebrew-zone text-xs text-slate-400 border-r-2 border-blue-500 pr-3">מומנטום חיובי חזק זוהה בגרף היומי.</p>
-                                    <p className="hebrew-zone text-xs text-slate-400 border-r-2 border-slate-700 pr-3">תמיכה קרובה בטווח של 2% מהמחיר הנוכחי.</p>
+
+                            <div className="glass-panel flex-1 p-5 overflow-hidden flex flex-col">
+                                <h3 className="hebrew-zone text-[9px] font-bold text-slate-500 mb-4 uppercase tracking-widest">תובנות בינה מלאכותית</h3>
+                                <div className="space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-1">
+                                    <div className="bg-blue-500/5 border-l-2 border-blue-500 p-3">
+                                        <p className="hebrew-zone text-[11px] text-slate-300 leading-relaxed italic">
+                                            "זיהוי פריצה טכנית: המניה נתמכת בקו ה-MA50 עם עלייה בנפח המסחר."
+                                        </p>
+                                    </div>
+                                    <div className="bg-emerald-500/5 border-l-2 border-emerald-500 p-3">
+                                        <p className="hebrew-zone text-[11px] text-slate-300 leading-relaxed italic">
+                                            "סנטימנט שוק: ניתוח חדשות אחרונות מצביע על אופטימיות בנוגע לדוחות."
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </aside>
                     </div>
 
-                    {/* Footer */}
-                    <footer className="h-6 bg-blue-600 flex items-center justify-between px-6 text-[10px] font-bold uppercase">
-                        <div>System: Optimal</div>
-                        <div className="hebrew-zone">נתוני אמת מאושרים</div>
+                    {/* Bottom Bar */}
+                    <footer className="h-6 bg-slate-900 border-t border-white/5 flex items-center justify-between px-4 text-[8px] font-bold text-slate-500 uppercase tracking-widest shrink-0">
+                        <div className="flex gap-4">
+                            <span className="text-blue-500">API: Connected</span>
+                            <span>Region: Israel (Local)</span>
+                        </div>
+                        <div className="hebrew-zone text-slate-600">כל הזכויות שמורות ל-Quanta AI Terminal 2024</div>
                     </footer>
                 </div>
             );
