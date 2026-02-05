@@ -1,289 +1,320 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Search, 
-  Trash2, 
-  Cpu, 
-  Settings,
-  Activity,
-  DollarSign,
-  Zap,
-  RefreshCw,
-  Target,
-  BarChart2,
-  AlertTriangle,
-  TrendingUp,
-  ArrowUpRight,
-  ArrowDownRight
+  TrendingUp, TrendingDown, Bell, Search, Newspaper, 
+  BarChart3, AlertCircle, Loader2, DollarSign, ArrowUpRight, 
+  ArrowDownRight, Wallet, History, Activity, Briefcase, Settings2
 } from 'lucide-react';
 
-const STORAGE_KEY = 'quanta_terminal_v4';
+/**
+ * QUANTA PRO - Trading Simulator Edition
+ * גרסה זו מאפשרת שליטה ידנית במחירי המניות לצורך סימולציה ובדיקת אסטרטגיות.
+ */
+
+const GEMINI_API_KEY = ""; // המפתח מוזרק אוטומטית בזמן ריצה
 
 const App = () => {
-  const [ticker, setTicker] = useState('SPY');
-  const [manualPrice, setManualPrice] = useState("617.20");
-  const [watchlist, setWatchlist] = useState(['SPY', 'QQQ', 'NVDA', 'AAPL', 'TSLA']);
-  const [aiAnalysis, setAiAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [ticker, setTicker] = useState('NVDA');
+  const [priceInput, setPriceInput] = useState('132.45');
+  const [stockData, setStockData] = useState({ 
+    symbol: 'NVDA', 
+    price: 132.45, 
+    change: 2.41, 
+    changePercent: 1.85 
+  });
+  const [news, setNews] = useState([]);
+  const [financials, setFinancials] = useState({
+    revenue: "30.0B", 
+    revenueGrowth: "+262%", 
+    eps: "0.61", 
+    epsForecast: "0.55", 
+    netIncome: "14.8B"
+  });
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [portfolio, setPortfolio] = useState({ balance: 25000, shares: 0 });
+  const [alerts, setAlerts] = useState([]);
+  const [tradeStatus, setTradeStatus] = useState(null);
 
-  // --- Persistence ---
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const data = JSON.parse(saved);
-      if (data.watchlist) setWatchlist(data.watchlist);
+  // פונקציית עזר לביצוע קריאות ל-Gemini
+  const fetchWithRetry = async (url, options = {}, retries = 3) => {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (err) {
+      if (retries > 0) return fetchWithRetry(url, options, retries - 1);
+      throw err;
     }
-  }, []);
-
-  const saveToStorage = (updatedWatch) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ watchlist: updatedWatch }));
   };
 
-  // --- AI Analysis Logic ---
-  const runAiAnalysis = useCallback((price) => {
-    setIsAnalyzing(true);
-    
-    // סימולציה של ניתוח טכני מהיר על בסיס המחיר הידני
-    setTimeout(() => {
-      const numPrice = parseFloat(price);
-      if (isNaN(numPrice)) return;
+  // ניתוח AI המבוסס על המחיר שהוזן ידנית
+  const performAIAnalysis = async (symbol, currentPrice, financialData) => {
+    const prompt = `אתה אנליסט בכיר. נתח את המניה ${symbol} כאשר המחיר הנוכחי הוא ${currentPrice}$.
+    נתונים פיננסיים: ${JSON.stringify(financialData)}
+    ענה בעברית בצורה מקצועית. החזר JSON בלבד:
+    {
+      "sentiment": "positive" | "negative",
+      "score": 0-100,
+      "summary": "סיכום קצר",
+      "risk_level": "low" | "medium" | "high",
+      "recommendation": "BUY" | "SELL" | "HOLD"
+    }`;
 
-      const volatility = numPrice * 0.008;
-      const rsi = 45 + (Math.random() * 25); // רנדומלי לסימולציה
-      const support = (numPrice - volatility).toFixed(2);
-      const resistance = (numPrice + volatility).toFixed(2);
+    try {
+      const response = await fetchWithRetry(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json" }
+          })
+        }
+      );
       
-      let rec = "HOLD";
-      let color = "text-blue-400";
-      if (rsi > 62) { rec = "BUY"; color = "text-emerald-400"; }
-      else if (rsi < 38) { rec = "SELL"; color = "text-rose-400"; }
-
-      setAiAnalysis({
-        rec,
-        color,
-        rsi: rsi.toFixed(1),
-        support,
-        resistance,
-        summary: `מניית ${ticker} נסחרת סביב $${numPrice}. ה-AI מזהה רמת תמיכה קריטית ב-$${support}. המומנטום (RSI) עומד על ${rsi.toFixed(1)}.`
-      });
-      setIsAnalyzing(false);
-    }, 600);
-  }, [ticker]);
-
-  const handlePriceChange = (e) => {
-    const val = e.target.value;
-    setManualPrice(val);
-    if (val && !isNaN(parseFloat(val))) {
-      runAiAnalysis(val);
+      const content = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      return JSON.parse(content || "{}");
+    } catch (err) {
+      return { sentiment: 'neutral', score: 50, summary: "ניתוח מקומי: המחיר עודכן ידנית.", recommendation: "HOLD", risk_level: "medium" };
     }
   };
 
-  const addToWatchlist = (s) => {
-    const sym = s.toUpperCase();
-    if (sym && !watchlist.includes(sym)) {
-      const newList = [sym, ...watchlist];
-      setWatchlist(newList);
-      saveToStorage(newList);
-    }
+  const updateMarketPrice = async () => {
+    setLoading(true);
+    const newPrice = parseFloat(priceInput);
+    
+    // חישוב שינוי מדומה ביחס למחיר הקודם
+    const diff = newPrice - stockData.price;
+    const diffPercent = (diff / stockData.price) * 100;
+
+    const newStockData = {
+      symbol: ticker,
+      price: newPrice,
+      change: diff.toFixed(2),
+      changePercent: diffPercent.toFixed(2)
+    };
+
+    setStockData(newStockData);
+    
+    // עדכון חדשות מדומות לפי המחיר
+    setNews([
+      { title: `תנודה משמעותית ב-${ticker}`, summary: `מחיר המניה הגיע ל-${newPrice}$ בעקבות פעילות ערה בשוק.` },
+      { title: "תגובת המשקיעים לעדכון", summary: `אנליסטים בוחנים את רמת ה-${newPrice}$ כנקודת תמיכה/התנגדות קריטית.` }
+    ]);
+
+    // הפעלת AI על המחיר החדש
+    const aiResult = await performAIAnalysis(ticker, newPrice, financials);
+    setAnalysis(aiResult);
+    
+    setLoading(false);
   };
 
-  // Run initial analysis
+  const handleTrade = (type) => {
+    const currentPrice = stockData.price;
+    if (type === 'BUY' && portfolio.balance >= currentPrice) {
+      setPortfolio(prev => ({ balance: prev.balance - currentPrice, shares: prev.shares + 1 }));
+      setTradeStatus({ type: 'success', msg: `קנית מניית ${ticker} ב-${currentPrice}$` });
+    } else if (type === 'SELL' && portfolio.shares > 0) {
+      setPortfolio(prev => ({ balance: prev.balance + currentPrice, shares: prev.shares - 1 }));
+      setTradeStatus({ type: 'success', msg: `מכרת מניית ${ticker} ב-${currentPrice}$` });
+    } else {
+      setTradeStatus({ type: 'error', msg: 'פעולה נכשלה: בדוק יתרה או כמות מניות' });
+    }
+    setTimeout(() => setTradeStatus(null), 3000);
+  };
+
   useEffect(() => {
-    runAiAnalysis(manualPrice);
+    updateMarketPrice();
   }, [ticker]);
 
   return (
-    <div className="flex flex-col h-screen bg-[#020617] text-slate-200 font-sans select-none overflow-hidden" dir="rtl">
-      {/* Top Navigation */}
-      <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#0a0f1e] shrink-0">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Zap size={20} className="text-blue-500 fill-current" />
-            <span className="text-xl font-black tracking-tighter italic">QUANTA<span className="text-blue-500">PRO</span></span>
+    <div className="min-h-screen bg-[#020617] text-slate-100 p-4 font-sans" dir="rtl">
+      {/* Top Portfolio Bar */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-slate-900/50 border border-white/5 p-5 rounded-3xl flex justify-around items-center backdrop-blur-xl">
+          <div className="text-center">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">יתרה פנויה</p>
+            <p className="text-2xl font-mono font-bold text-blue-400">${portfolio.balance.toLocaleString()}</p>
           </div>
-          <div className="h-6 w-px bg-white/10" />
-          <div className="hidden md:flex items-center gap-3 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
-            <Activity size={14} className="text-emerald-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Manual Sync: Active</span>
+          <div className="w-px h-10 bg-white/10" />
+          <div className="text-center">
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">מניות בתיק</p>
+            <p className="text-2xl font-mono font-bold text-purple-400">{portfolio.shares}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="relative group">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={16} />
-            <input 
-              onKeyDown={(e) => e.key === 'Enter' && (setTicker(e.target.value.toUpperCase()), addToWatchlist(e.target.value))}
-              placeholder="חפש סימול (למשל: TSLA)..."
-              className="bg-white/5 border border-white/10 rounded-xl pr-10 pl-4 py-2 text-sm w-48 md:w-64 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-left"
-            />
+        <div className="md:col-span-2 bg-slate-900/50 border border-white/5 p-5 rounded-3xl flex items-center gap-4 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full shrink-0">
+            <Activity size={14} className="text-blue-500" />
+            <span className="text-[10px] font-bold text-blue-500 uppercase tracking-tighter">Live Simulator</span>
           </div>
-          <button className="p-2 hover:bg-white/5 rounded-lg text-slate-400 transition-colors">
-            <Settings size={20} />
-          </button>
+          <p className="text-xs text-slate-400 italic truncate">מצב סימולציה פעיל: שנה את המחיר ידנית כדי לבחון את תגובת ה-AI...</p>
         </div>
-      </header>
+      </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar - Watchlist */}
-        <aside className="w-64 md:w-80 bg-[#0a0f1e] border-l border-white/5 flex flex-col shrink-0">
-          <div className="p-4 border-b border-white/5 flex justify-between items-center bg-black/20">
-            <h2 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">מניות במעקב</h2>
-            <Target size={14} className="text-slate-600" />
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
-            {watchlist.map(s => (
-              <div 
-                key={s}
-                onClick={() => setTicker(s)}
-                className={`p-4 rounded-xl cursor-pointer transition-all border group ${ticker === s ? 'bg-blue-600/10 border-blue-500/40' : 'bg-white/5 border-transparent hover:bg-white/10'}`}
-              >
-                <div className="flex justify-between items-center">
-                  <span className={`text-lg font-black ${ticker === s ? 'text-blue-400' : 'text-white'}`}>{s}</span>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); const newList = watchlist.filter(i => i !== s); setWatchlist(newList); saveToStorage(newList); }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-rose-500 transition-all"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-tight">
-                   <span>Monitor Mode</span>
-                   <span className="text-emerald-500">Live</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        {/* Main Content Area */}
-        <main className="flex-1 flex flex-col bg-[#020617] relative">
+      <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-8 space-y-6">
           
-          {/* Dashboard Header */}
-          <div className="p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
-            <div className="flex items-center gap-6 md:gap-10">
-              <div>
-                <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-2 block text-right">נכס פעיל</span>
-                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter">{ticker}</h1>
-              </div>
-
-              <div className="h-16 w-px bg-white/10 hidden md:block" />
-
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 text-right">מחיר שוק (IBKR)</span>
-                <div className="flex items-center gap-3 bg-white/5 border border-white/10 p-2 rounded-2xl focus-within:ring-2 ring-blue-500 transition-all">
-                  <DollarSign size={20} className="text-emerald-500" />
-                  <input 
-                    value={manualPrice}
-                    onChange={handlePriceChange}
-                    className="bg-transparent text-3xl md:text-4xl font-mono font-bold text-white w-32 md:w-40 outline-none text-left"
-                    placeholder="0.00"
-                  />
-                  <RefreshCw size={20} className={`text-slate-600 mr-2 ${isAnalyzing ? 'animate-spin text-blue-500' : ''}`} />
-                </div>
+          {/* Controls & Price Input */}
+          <div className="bg-slate-900 border border-white/5 p-6 rounded-[2.5rem] flex flex-col md:flex-row gap-6 items-center shadow-2xl">
+            <div className="flex-1 w-full">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block mr-2">סימול מניה</label>
+              <div className="relative">
+                <Search className="absolute right-4 top-3.5 text-slate-500" size={18} />
+                <input 
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-3 px-12 focus:ring-1 ring-blue-500 text-lg font-bold"
+                  placeholder="Ticker (e.g. TSLA)"
+                />
               </div>
             </div>
-
-            <div className="flex gap-4">
-              <button className="flex-1 md:flex-none px-10 md:px-14 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">BUY</button>
-              <button className="flex-1 md:flex-none px-10 md:px-14 py-4 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-rose-900/20 active:scale-95 transition-all">SELL</button>
+            
+            <div className="flex-1 w-full">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block mr-2">קבע מחיר ידנית ($)</label>
+              <div className="flex gap-2">
+                <input 
+                  type="number"
+                  value={priceInput}
+                  onChange={(e) => setPriceInput(e.target.value)}
+                  className="flex-1 bg-black/40 border border-white/10 rounded-2xl py-3 px-4 focus:ring-1 ring-blue-500 text-lg font-mono font-bold text-emerald-400"
+                />
+                <button 
+                  onClick={updateMarketPrice}
+                  className="bg-blue-600 hover:bg-blue-500 px-6 rounded-2xl font-bold transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                >
+                  <Settings2 size={18} />
+                  עדכן
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* AI Intelligence Hub */}
-          <div className="flex-1 p-6 md:p-8 overflow-y-auto">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Display Price Card */}
+            <div className="bg-slate-900 border border-white/5 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-emerald-500" />
+              {loading && <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center rounded-[2.5rem]"><Loader2 className="animate-spin text-blue-500" size={40} /></div>}
               
-              {/* Central Analysis Card */}
-              <div className="lg:col-span-2 bg-[#0a0f1e] border border-white/10 rounded-[2.5rem] p-6 md:p-8 shadow-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/10 rounded-full blur-[80px] -mr-24 -mt-24" />
-                
-                <div className="flex items-center gap-4 mb-8">
-                  <div className="w-12 h-12 bg-blue-600/20 rounded-2xl flex items-center justify-center text-blue-500 shadow-inner">
-                    <Cpu size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-white uppercase tracking-tight">Gemini AI Engine</h3>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">ניתוח נתונים בזמן אמת</p>
-                  </div>
-                </div>
+              <div className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mb-2">מחיר נוכחי בסימולטור</div>
+              <div className="text-7xl font-mono font-bold mb-4 tracking-tighter text-white transition-all group-hover:scale-105 origin-right">
+                ${stockData.price.toFixed(2)}
+              </div>
+              <div className={`flex items-center gap-2 font-bold text-xl mb-10 ${Number(stockData.change) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {Number(stockData.change) >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+                {stockData.changePercent}%
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                  <div className="bg-black/40 p-6 rounded-3xl border border-white/5 flex flex-col items-center sm:items-start">
-                    <span className="text-[10px] font-black text-slate-500 uppercase block mb-3">Recommendation</span>
-                    <span className={`text-5xl font-black tracking-tighter ${aiAnalysis?.color || 'text-slate-600'}`}>
-                      {aiAnalysis?.rec || 'ANALYZING...'}
-                    </span>
-                  </div>
-                  <div className="bg-black/40 p-6 rounded-3xl border border-white/5 flex flex-col items-center sm:items-start">
-                    <span className="text-[10px] font-black text-slate-500 uppercase block mb-3">Technical RSI</span>
-                    <span className="text-5xl font-mono font-bold text-white tracking-tighter">
-                      {aiAnalysis?.rsi || '--.-'}
-                    </span>
-                  </div>
+              <div className="flex gap-4">
+                <button onClick={() => handleTrade('BUY')} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 uppercase tracking-widest">Buy</button>
+                <button onClick={() => handleTrade('SELL')} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 uppercase tracking-widest">Sell</button>
+              </div>
+              
+              {tradeStatus && (
+                <div className={`mt-4 p-3 rounded-xl text-center text-[11px] font-bold animate-in zoom-in-95 ${tradeStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                  {tradeStatus.msg}
                 </div>
+              )}
+            </div>
 
-                <div className="bg-white/5 p-6 rounded-3xl border border-white/5 relative z-10">
-                  <p className="text-slate-300 leading-relaxed italic text-right">
-                    {aiAnalysis?.summary || "הזן מחיר שוק כדי שה-AI יוכל לעבד את המומנטום הנוכחי של המניה..."}
+            {/* AI Analyst Response */}
+            <div className={`p-8 rounded-[2.5rem] border shadow-2xl transition-all duration-500 ${
+              analysis?.sentiment === 'positive' ? 'border-emerald-500/30 bg-emerald-500/5' : 
+              analysis?.sentiment === 'negative' ? 'border-red-500/30 bg-red-500/5' : 'border-white/5 bg-slate-900'
+            }`}>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-black text-xl flex items-center gap-2 uppercase italic">
+                  <BarChart3 className="text-blue-500" />
+                  AI Perspective
+                </h3>
+                <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase ${analysis?.sentiment === 'positive' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                  Conf: {analysis?.score || 0}%
+                </span>
+              </div>
+              <div className="bg-black/40 p-5 rounded-2xl border border-white/5 mb-6 h-36 overflow-y-auto custom-scrollbar">
+                <p className="text-sm leading-relaxed text-slate-300 font-medium">
+                  {analysis?.summary || "ממתין לעדכון מחיר..."}
+                </p>
+              </div>
+              <div className="flex justify-between items-end border-t border-white/5 pt-4">
+                <div>
+                  <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Recommendation</p>
+                  <p className={`text-3xl font-black italic ${analysis?.recommendation === 'BUY' ? 'text-emerald-400' : analysis?.recommendation === 'SELL' ? 'text-red-400' : 'text-blue-400'}`}>
+                    {analysis?.recommendation || "WAIT"}
+                  </p>
+                </div>
+                <div className="text-left">
+                  <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">Risk Scale</p>
+                  <p className={`text-xl font-bold uppercase ${analysis?.risk_level === 'low' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {analysis?.risk_level || "---"}
                   </p>
                 </div>
               </div>
-
-              {/* Sidebar Stats */}
-              <div className="space-y-6">
-                <div className="bg-[#0a0f1e] border border-white/10 rounded-[2rem] p-6">
-                  <h4 className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase mb-6 tracking-widest text-right">
-                    <BarChart2 size={14} className="text-blue-500" />
-                    רמות מחיר מפתח
-                  </h4>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 group hover:border-rose-500/30 transition-all">
-                      <span className="text-[10px] font-black text-rose-500 uppercase">RESISTANCE</span>
-                      <span className="text-xl font-mono font-bold text-white">${aiAnalysis?.resistance || '---.--'}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5 group hover:border-emerald-500/30 transition-all">
-                      <span className="text-[10px] font-black text-emerald-500 uppercase">SUPPORT</span>
-                      <span className="text-xl font-mono font-bold text-white">${aiAnalysis?.support || '---.--'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/20 rounded-[2rem] p-6 flex flex-col items-center justify-center text-center">
-                   <Target size={32} className="text-blue-400 mb-3" />
-                   <p className="text-xs font-black text-blue-300 mb-1">PRO MODE ENABLED</p>
-                   <p className="text-[10px] text-slate-400 leading-tight">
-                     המערכת מבצעת אופטימיזציה לנתוני המסחר שאתה מזין מהטרמינל החיצוני.
-                   </p>
-                </div>
-              </div>
-
             </div>
           </div>
-          
-          {/* Status Bar */}
-          <div className="h-12 bg-blue-600/10 border-t border-blue-500/20 px-8 flex items-center justify-between">
-             <div className="flex items-center gap-4">
-                <span className="flex items-center gap-2 text-[10px] font-black text-blue-400 uppercase tracking-widest">
-                   <AlertTriangle size={12} />
-                   High Precision Sync
-                </span>
-                <div className="w-px h-3 bg-blue-500/20" />
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter italic">
-                   IBKR Live: {ticker} @ ${manualPrice}
-                </span>
-             </div>
-             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">System Online</span>
-             </div>
+
+          {/* Technicals */}
+          <div className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8">
+            <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
+              <Activity size={14} className="text-blue-500" /> Fundamental Data (Static)
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              <div>
+                <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Revenue</p>
+                <p className="text-xl font-bold tracking-tight">{financials.revenue}</p>
+                <p className="text-[10px] text-emerald-400 font-bold">{financials.revenueGrowth} YoY</p>
+              </div>
+              <div>
+                <p className="text-[9px] text-slate-500 font-black uppercase mb-1">EPS</p>
+                <p className="text-xl font-bold tracking-tight">${financials.eps}</p>
+                <p className="text-[10px] text-slate-400">Forecast: ${financials.epsForecast}</p>
+              </div>
+              <div>
+                <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Net Income</p>
+                <p className="text-xl font-bold tracking-tight">{financials.netIncome}</p>
+              </div>
+              <div>
+                <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Momentum</p>
+                <p className="text-xl font-black text-blue-500 italic uppercase">Bullish</p>
+              </div>
+            </div>
           </div>
-        </main>
-      </div>
+        </div>
+
+        {/* Simulator Feed */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-6 shadow-2xl h-full flex flex-col">
+            <h3 className="font-black text-lg mb-6 flex items-center gap-2 border-b border-white/5 pb-4 uppercase italic">
+              <Newspaper className="text-blue-500" size={20} />
+              Simulator Feed
+            </h3>
+            <div className="space-y-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+              {news.map((n, i) => (
+                <div key={i} className="group p-4 rounded-2xl hover:bg-white/5 transition-all border border-transparent hover:border-white/5">
+                  <h4 className="text-sm font-bold group-hover:text-blue-400 transition-colors mb-2 leading-snug">{n.title}</h4>
+                  <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed italic">{n.summary}</p>
+                  <div className="flex justify-between items-center text-[10px] font-bold text-slate-600 mt-4">
+                    <span className="bg-white/5 px-2 py-0.5 rounded uppercase tracking-tighter">{ticker}</span>
+                    <span className="flex items-center gap-1 opacity-50"><History size={10} /> Just Now</span>
+                  </div>
+                </div>
+              ))}
+              {news.length === 0 && <p className="text-center text-slate-600 text-xs py-10 uppercase font-black tracking-widest italic">No Data Stream</p>}
+            </div>
+            
+            <div className="mt-6 p-4 bg-blue-600/10 border border-blue-500/20 rounded-2xl">
+              <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Simulation Note</p>
+              <p className="text-[11px] text-slate-400 leading-tight">הזן מחיר שוק דמיוני כדי לראות כיצד מודל ה-AI מעריך את כדאיות הקנייה/מכירה ברמה זו.</p>
+            </div>
+          </div>
+        </div>
+      </main>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
       `}} />
     </div>
   );
