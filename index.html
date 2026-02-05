@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   TrendingUp, TrendingDown, Search, Newspaper, 
   BarChart3, Loader2, Activity, History, Settings2,
-  Zap, ArrowUpRight, ArrowDownRight
+  Zap, ArrowUpRight, ArrowDownRight, Wallet, Info
 } from 'lucide-react';
 
 /**
- * QUANTA PRO - Trading Simulator Edition
- * גרסה הכוללת שליטה ידנית במחיר וגרף אינטראקטיבי
+ * QUANTA PRO - Trading Terminal & Simulator
+ * גרסה משופרת הכוללת גרף נרות אינטראקטיבי, ניתוח AI ומערכת מסחר דמה.
  */
 
-const GEMINI_API_KEY = ""; // המפתח מוזרק אוטומטית
+const GEMINI_API_KEY = ""; // המפתח מוזרק אוטומטית בסביבת ההרצה
 
 const App = () => {
   const [ticker, setTicker] = useState('NVDA');
@@ -23,14 +23,19 @@ const App = () => {
   });
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [portfolio, setPortfolio] = useState({ balance: 25000, shares: 0 });
+  const [portfolio, setPortfolio] = useState({ balance: 50000, shares: 0 });
+  const [history, setHistory] = useState([]);
+  
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
 
-  // פונקציה לניתוח AI על בסיס המחיר שהוזן
+  // פונקציה לניתוח AI על בסיס המחיר שהוזן ידנית
   const performAIAnalysis = async (symbol, currentPrice) => {
-    const prompt = `נתח את המניה ${symbol} במחיר ${currentPrice}$. האם זה מחיר טוב לקנייה? ענה בעברית קצרה ומקצועית. החזר JSON: {"sentiment": "positive/negative", "summary": "...", "recommendation": "BUY/SELL/HOLD"}`;
+    const prompt = `אתה אנליסט מומחה. נתח את המניה ${symbol} במחיר הנוכחי של ${currentPrice}$. 
+    האם זהו מחיר כניסה טוב? ענה בעברית מקצועית וקצרה. 
+    החזר JSON במבנה הבא: 
+    {"sentiment": "חיובי/שלילי", "summary": "ניתוח של 2-3 משפטים", "recommendation": "BUY/SELL/HOLD", "target": "מחיר יעד מוערך"}`;
     
     try {
       const response = await fetch(
@@ -47,71 +52,123 @@ const App = () => {
       const result = await response.json();
       return JSON.parse(result.candidates[0].content.parts[0].text);
     } catch (err) {
-      return { sentiment: 'neutral', summary: "לא ניתן להתחבר ל-AI כרגע.", recommendation: "HOLD" };
+      return { 
+        sentiment: "נייטרלי", 
+        summary: "לא ניתן היה ליצור ניתוח AI כרגע. בדוק את חיבור האינטרנט או את מחיר המניה.", 
+        recommendation: "HOLD",
+        target: "N/A"
+      };
     }
   };
 
-  // אתחול הגרף
+  // אתחול ספריית הגרפים
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // טעינת הספרייה באופן דינמי אם היא לא קיימת
-    const script = document.createElement('script');
-    script.src = "https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js";
-    script.onload = () => {
+    const loadChart = () => {
+      if (!window.LightweightCharts) {
+        const script = document.createElement('script');
+        script.src = "https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js";
+        script.async = true;
+        script.onload = initChart;
+        document.head.appendChild(script);
+      } else {
+        initChart();
+      }
+    };
+
+    const initChart = () => {
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
+
       const chart = window.LightweightCharts.createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: 300,
-        layout: { backgroundColor: 'transparent', textColor: '#94a3b8' },
-        grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
-        timeScale: { borderColor: '#1e293b' },
+        height: 350,
+        layout: {
+          backgroundColor: '#020617',
+          textColor: '#64748b',
+          fontSize: 12,
+        },
+        grid: {
+          vertLines: { color: 'rgba(30, 41, 59, 0.5)' },
+          horzLines: { color: 'rgba(30, 41, 59, 0.5)' },
+        },
+        crosshair: {
+          mode: window.LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+        },
+        timeScale: {
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          timeVisible: true,
+        },
       });
 
       const series = chart.addCandlestickSeries({
-        upColor: '#10b981', downColor: '#ef4444',
-        wickUpColor: '#10b981', wickDownColor: '#ef4444',
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        borderVisible: false,
+        wickUpColor: '#10b981',
+        wickDownColor: '#ef4444',
       });
 
-      // נתונים התחלתיים
-      const data = [];
+      // יצירת היסטוריית מחירים דמויה
+      const initialData = [];
       let p = 130;
-      let t = Math.floor(Date.now() / 1000) - 100 * 60;
-      for(let i=0; i<100; i++) {
-        const o = p + (Math.random()-0.5)*2;
-        const c = o + (Math.random()-0.5)*2;
-        data.push({ time: t + i*60, open: o, high: Math.max(o,c)+0.2, low: Math.min(o,c)-0.2, close: c });
-        p = c;
+      let t = Math.floor(Date.now() / 1000) - (150 * 60);
+      for(let i=0; i<150; i++) {
+        const open = p + (Math.random() - 0.5) * 2;
+        const close = open + (Math.random() - 0.5) * 2;
+        initialData.push({
+          time: t + (i * 60),
+          open,
+          high: Math.max(open, close) + 0.5,
+          low: Math.min(open, close) - 0.5,
+          close
+        });
+        p = close;
       }
-      series.setData(data);
+      series.setData(initialData);
       
       chartRef.current = chart;
       seriesRef.current = series;
-    };
-    document.head.appendChild(script);
 
-    return () => { if (chartRef.current) chartRef.current.remove(); };
+      const handleResize = () => {
+        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      };
+      window.addEventListener('resize', handleResize);
+    };
+
+    loadChart();
+    return () => {
+      if (chartRef.current) chartRef.current.remove();
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
-  const handleUpdate = async () => {
+  const handleUpdatePrice = async () => {
     setLoading(true);
     const newPrice = parseFloat(priceInput);
     const diff = newPrice - stockData.price;
-    
-    setStockData(prev => ({
-      ...prev,
+    const diffPercent = ((diff / stockData.price) * 100).toFixed(2);
+
+    setStockData({
+      symbol: ticker,
       price: newPrice,
       change: diff.toFixed(2),
-      changePercent: ((diff / prev.price) * 100).toFixed(2)
-    }));
+      changePercent: diffPercent
+    });
 
-    // עדכון הגרף בנקודה חדשה
+    // עדכון הגרף בנקודה חדשה לגמרי
     if (seriesRef.current) {
       const lastTime = Math.floor(Date.now() / 1000);
       seriesRef.current.update({
         time: lastTime,
         open: stockData.price,
-        high: Math.max(stockData.price, newPrice) + 0.1,
-        low: Math.min(stockData.price, newPrice) - 0.1,
+        high: Math.max(stockData.price, newPrice) + 0.5,
+        low: Math.min(stockData.price, newPrice) - 0.5,
         close: newPrice
       });
     }
@@ -121,128 +178,219 @@ const App = () => {
     setLoading(false);
   };
 
+  const executeTrade = (type) => {
+    const cost = stockData.price;
+    if (type === 'BUY') {
+      if (portfolio.balance >= cost) {
+        setPortfolio(prev => ({ balance: prev.balance - cost, shares: prev.shares + 1 }));
+        setHistory(prev => [{ type: 'BUY', price: cost, time: new Date().toLocaleTimeString(), ticker }, ...prev]);
+      }
+    } else if (type === 'SELL') {
+      if (portfolio.shares > 0) {
+        setPortfolio(prev => ({ balance: prev.balance + cost, shares: prev.shares - 1 }));
+        setHistory(prev => [{ type: 'SELL', price: cost, time: new Date().toLocaleTimeString(), ticker }, ...prev]);
+      }
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-100 p-6 font-sans" dir="rtl">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[#020617] text-slate-100 p-4 md:p-8 font-sans selection:bg-blue-500/30" dir="rtl">
+      <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/50 p-6 rounded-[2rem] border border-white/5 backdrop-blur-md">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20">
-              <Zap size={24} className="fill-current text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-black tracking-tighter italic">QUANTA<span className="text-blue-500">PRO</span></h1>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Simulator & AI Terminal</p>
-            </div>
+        {/* Top Header / Dashboard Stats */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-1 bg-slate-900/80 border border-white/5 p-6 rounded-[2rem] backdrop-blur-xl flex items-center gap-4">
+             <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20 shrink-0">
+               <Zap size={24} className="fill-current text-white" />
+             </div>
+             <div>
+               <h1 className="text-2xl font-black tracking-tighter italic leading-none">QUANTA<span className="text-blue-500">PRO</span></h1>
+               <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">Terminal v2.5</p>
+             </div>
           </div>
-          <div className="flex gap-4 w-full md:w-auto">
-            <div className="bg-black/40 px-6 py-2 rounded-2xl border border-white/5">
-              <p className="text-[9px] text-slate-500 font-bold uppercase">Portfolio Balance</p>
-              <p className="text-xl font-mono font-bold text-blue-400">${portfolio.balance.toLocaleString()}</p>
+          
+          <div className="lg:col-span-3 bg-slate-900/40 border border-white/5 p-6 rounded-[2rem] flex flex-wrap justify-between items-center gap-6">
+            <div className="flex gap-8">
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <Wallet size={10} /> יתרה בחשבון
+                </p>
+                <p className="text-2xl font-mono font-bold text-white">${portfolio.balance.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">מניות בבעלות</p>
+                <p className="text-2xl font-mono font-bold text-blue-400">{portfolio.shares}</p>
+              </div>
             </div>
-            <div className="bg-black/40 px-6 py-2 rounded-2xl border border-white/5 text-left">
-              <p className="text-[9px] text-slate-500 font-bold uppercase">Shares Owned</p>
-              <p className="text-xl font-mono font-bold text-purple-400">{portfolio.shares}</p>
+            
+            <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-2xl border border-white/5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">חיבור פעיל לסימולטור</span>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main Controls & Chart */}
+          
+          {/* Main Chart and Controls Area */}
           <div className="lg:col-span-8 space-y-6">
-            <div className="bg-slate-900 border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
-              <div className="flex flex-col md:flex-row gap-6 mb-8">
-                <div className="flex-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block mr-2">Symbol</label>
-                  <input 
-                    value={ticker}
-                    onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                    className="w-full bg-black/40 border border-white/10 rounded-2xl py-3 px-6 focus:ring-1 ring-blue-500 text-lg font-bold"
-                  />
+            <div className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[100px] pointer-events-none" />
+              
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
+                <div className="flex-1 w-full md:w-auto">
+                   <div className="flex items-center gap-3 mb-2">
+                     <span className="bg-blue-500/10 text-blue-400 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">Nasdaq</span>
+                     <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Real-time Stream</span>
+                   </div>
+                   <div className="flex items-center gap-4">
+                     <input 
+                       value={ticker}
+                       onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                       className="bg-transparent text-5xl font-black tracking-tighter outline-none focus:text-blue-500 transition-colors w-32"
+                     />
+                     <div className={`flex flex-col ${Number(stockData.change) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <span className="text-2xl font-mono font-bold">{stockData.changePercent}%</span>
+                        <span className="text-xs font-bold uppercase">{Number(stockData.change) >= 0 ? 'Surging' : 'Dropping'}</span>
+                     </div>
+                   </div>
                 </div>
-                <div className="flex-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block mr-2">Set Price ($)</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="number"
-                      value={priceInput}
-                      onChange={(e) => setPriceInput(e.target.value)}
-                      className="flex-1 bg-black/40 border border-white/10 rounded-2xl py-3 px-6 focus:ring-1 ring-blue-500 text-lg font-mono font-bold text-emerald-400"
-                    />
-                    <button onClick={handleUpdate} className="bg-blue-600 hover:bg-blue-500 px-6 rounded-2xl font-bold transition-all shadow-lg shadow-blue-500/20">
-                      עדכן
-                    </button>
-                  </div>
+
+                <div className="bg-black/40 p-1 rounded-2xl border border-white/10 flex items-center w-full md:w-auto">
+                   <input 
+                     type="number"
+                     value={priceInput}
+                     onChange={(e) => setPriceInput(e.target.value)}
+                     className="bg-transparent text-2xl font-mono font-bold text-emerald-400 px-4 py-2 w-32 outline-none"
+                   />
+                   <button 
+                     onClick={handleUpdatePrice}
+                     className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2"
+                   >
+                     <Settings2 size={18} />
+                     עדכן מחיר
+                   </button>
                 </div>
               </div>
 
-              <div className="mb-6 flex justify-between items-end">
-                <div>
-                  <h2 className="text-5xl font-black tracking-tighter">{ticker}</h2>
-                  <div className={`flex items-center gap-1 font-bold ${Number(stockData.change) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {Number(stockData.change) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                    {stockData.changePercent}%
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-4xl font-mono font-bold">${stockData.price.toFixed(2)}</p>
+              {/* Chart Component */}
+              <div className="relative mb-8">
+                <div ref={chartContainerRef} className="w-full rounded-2xl overflow-hidden border border-white/5 bg-black/20" />
+                <div className="absolute top-4 left-4 flex gap-2">
+                  <span className="bg-slate-800/80 backdrop-blur-md text-[10px] font-bold px-3 py-1 rounded-lg border border-white/5">1M</span>
+                  <span className="bg-blue-600 text-[10px] font-bold px-3 py-1 rounded-lg">5M</span>
+                  <span className="bg-slate-800/80 backdrop-blur-md text-[10px] font-bold px-3 py-1 rounded-lg border border-white/5">1H</span>
                 </div>
               </div>
 
-              <div ref={chartContainerRef} className="w-full bg-black/20 rounded-2xl border border-white/5" style={{ height: '300px' }} />
+              {/* Trade Buttons */}
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => executeTrade('BUY')}
+                  className="bg-emerald-600/10 hover:bg-emerald-600 border border-emerald-500/20 hover:border-emerald-500 text-emerald-400 hover:text-white p-6 rounded-2xl transition-all duration-300 flex flex-col items-center gap-2 group"
+                >
+                  <ArrowUpRight className="group-hover:-translate-y-1 transition-transform" />
+                  <span className="font-black uppercase tracking-widest text-lg">קנייה (BUY)</span>
+                  <span className="text-[10px] font-bold opacity-60">מחיר שוק: ${stockData.price}</span>
+                </button>
+                <button 
+                  onClick={() => executeTrade('SELL')}
+                  className="bg-red-600/10 hover:bg-red-600 border border-red-500/20 hover:border-red-500 text-red-400 hover:text-white p-6 rounded-2xl transition-all duration-300 flex flex-col items-center gap-2 group"
+                >
+                  <ArrowDownRight className="group-hover:translate-y-1 transition-transform" />
+                  <span className="font-black uppercase tracking-widest text-lg">מכירה (SELL)</span>
+                  <span className="text-[10px] font-bold opacity-60">זמין למכירה: {portfolio.shares}</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* AI Side Panel */}
+          {/* AI Panel & History */}
           <div className="lg:col-span-4 space-y-6">
-            <div className={`p-8 rounded-[2.5rem] border shadow-2xl h-full transition-all duration-700 ${
-              analysis?.sentiment === 'positive' ? 'border-emerald-500/30 bg-emerald-500/5' : 
-              analysis?.sentiment === 'negative' ? 'border-red-500/30 bg-red-500/5' : 'bg-slate-900 border-white/5'
+            
+            {/* AI Analysis Card */}
+            <div className={`rounded-[2.5rem] border p-8 shadow-2xl transition-all duration-700 min-h-[350px] flex flex-col ${
+              analysis?.recommendation === 'BUY' ? 'border-emerald-500/30 bg-emerald-500/5' : 
+              analysis?.recommendation === 'SELL' ? 'border-red-500/30 bg-red-500/5' : 'bg-slate-900 border-white/5'
             }`}>
-              <div className="flex items-center gap-2 mb-6 border-b border-white/5 pb-4">
-                <BarChart3 className="text-blue-500" />
-                <h3 className="font-black text-xl uppercase italic tracking-tighter text-white">AI Analysis</h3>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-black text-xl flex items-center gap-2 uppercase italic">
+                  <BarChart3 className="text-blue-500" />
+                  AI Analysis
+                </h3>
+                {loading && <Loader2 className="animate-spin text-blue-500" size={20} />}
               </div>
 
-              {loading ? (
-                <div className="py-20 flex flex-col items-center gap-4">
-                  <Loader2 className="animate-spin text-blue-500" size={40} />
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Processing Market Shift...</p>
+              <div className="flex-1 space-y-6">
+                <div className="bg-black/40 p-5 rounded-2xl border border-white/5">
+                  <p className="text-sm leading-relaxed text-slate-300 font-medium">
+                    {analysis?.summary || "הזן מחיר חדש ולחץ על 'עדכן מחיר' כדי לקבל ניתוח שוק מבוסס בינה מלאכותית."}
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-8">
-                  <div className="bg-black/40 p-5 rounded-2xl border border-white/5 min-h-[120px]">
-                    <p className="text-sm leading-relaxed text-slate-300 font-medium">
-                      {analysis?.summary || "הזן מחיר חדש ולחץ על עדכן כדי לקבל ניתוח AI על המניה."}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1">המלצה</p>
+                    <p className={`text-xl font-black italic ${
+                      analysis?.recommendation === 'BUY' ? 'text-emerald-400' : 
+                      analysis?.recommendation === 'SELL' ? 'text-red-400' : 'text-blue-400'
+                    }`}>
+                      {analysis?.recommendation || "ממתין..."}
                     </p>
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-black/20 p-4 rounded-2xl">
-                      <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Recommendation</p>
-                      <p className={`text-2xl font-black italic ${analysis?.recommendation === 'BUY' ? 'text-emerald-400' : 'text-blue-400'}`}>
-                        {analysis?.recommendation || "---"}
-                      </p>
-                    </div>
-                    <div className="bg-black/20 p-4 rounded-2xl">
-                      <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Sentiment</p>
-                      <p className="text-2xl font-black italic text-slate-100 uppercase">
-                        {analysis?.sentiment || "---"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4">
-                    <button className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-lg shadow-emerald-500/20 active:scale-95">Buy</button>
-                    <button className="flex-1 bg-red-600 hover:bg-red-500 py-4 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-lg shadow-red-500/20 active:scale-95">Sell</button>
+                  <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+                    <p className="text-[9px] text-slate-500 font-black uppercase mb-1">מחיר יעד</p>
+                    <p className="text-xl font-mono font-bold text-white">
+                      {analysis?.target || "---"}
+                    </p>
                   </div>
                 </div>
-              )}
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-white/5 flex items-center gap-2 text-slate-500 italic text-[11px]">
+                <Info size={14} />
+                <span>הניתוח מבוסס על מודל Gemini 2.5 Flash</span>
+              </div>
             </div>
+
+            {/* Recent Activity History */}
+            <div className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 shadow-2xl h-[300px] flex flex-col">
+              <h3 className="font-black text-lg mb-6 flex items-center gap-2 border-b border-white/5 pb-4 uppercase italic">
+                <History className="text-blue-500" size={20} />
+                פעילות אחרונה
+              </h3>
+              <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pl-2">
+                {history.length > 0 ? history.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center p-3 bg-white/5 rounded-xl border border-white/5 animate-in slide-in-from-right">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-1.5 rounded-lg ${item.type === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {item.type === 'BUY' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold">{item.type} {item.ticker}</p>
+                        <p className="text-[10px] text-slate-500">{item.time}</p>
+                      </div>
+                    </div>
+                    <p className="font-mono font-bold text-sm">${item.price}</p>
+                  </div>
+                )) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
+                    <Activity size={32} className="opacity-20" />
+                    <p className="text-[10px] font-black uppercase tracking-widest italic">אין עסקאות רשומות</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+      `}} />
     </div>
   );
 };
